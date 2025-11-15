@@ -13,6 +13,7 @@ outputs/
 third_party/detectron2/
 third_party/Detic/
 wandb/
+results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
