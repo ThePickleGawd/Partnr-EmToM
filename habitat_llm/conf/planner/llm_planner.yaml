@@ -15,3 +15,5 @@ plan_config:
     rag_data_source_name: "" # rag_data_source_name folder itself
     example_type: "react" # The prompting format
     centralized: False
+    objects_response: False
+    objects_response_include_states: False

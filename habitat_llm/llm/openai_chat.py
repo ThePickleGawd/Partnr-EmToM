@@ -8,7 +8,7 @@ import os
 from typing import Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
-from openai import AzureOpenAI
+from openai import OpenAI
 
 from habitat_llm.llm.base_llm import BaseLLM, Prompt
 
@@ -44,16 +44,7 @@ class OpenAIChat(BaseLLM):
             assert len(api_key) > 0, ValueError("No OPENAI_API_KEY keys provided")
         except Exception:
             raise ValueError("No OPENAI API keys provided")
-        try:
-            endpoint = os.getenv("OPENAI_ENDPOINT")
-            assert len(endpoint) > 0, ValueError("No OPENAI_ENDPOINT keys provided")
-        except Exception:
-            raise ValueError("No OPENAI endpoint keys provided")
-        self.client = AzureOpenAI(
-            api_version="2024-06-01",
-            api_key=api_key,
-            azure_endpoint=f"https://{endpoint}",
-        )
+        self.client = OpenAI(api_key=api_key)
         self._validate_conf()
         self.verbose = self.llm_conf.verbose
         self.verbose = True
