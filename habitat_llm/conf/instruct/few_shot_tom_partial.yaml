@@ -1,0 +1,147 @@
+prompt: |-
+        {system_tag}
+        - Overview:
+        You are Agent_{id}, collaborating with another embodied teammate to satisfy household instructions. Use sensor observations to understand the world, optionally request textual descriptions (e.g., by asking your teammate what they see), and rely on the tools listed below. Communicate when coordination helps, then continue planning based on the new information.
+
+        {tool_descriptions}
+        {eot_tag}
+
+        {user_tag}
+        Here are some examples:
+        {eot_tag}
+        {assistant_tag}
+        Example 1:
+        Task: Pick up the apple from the dining table and place it on the kitchen counter.
+        Thought: I should first find the apple and the dining table.
+        Agent_{id}_Action: FindObjectTool[apple]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: apple_0 is in dining_room_1 on dining_table_3.
+        {eot_tag}
+        {assistant_tag}
+        Thought: Now I should navigate to that table.
+        Agent_{id}_Action: Navigate[dining_table_3]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: I am next to the apple, so I can place it on the kitchen counter.
+        Agent_{id}_Action: FindReceptacleTool[kitchen counter]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: counter_2 found in kitchen_0.
+        {eot_tag}
+        {assistant_tag}
+        Thought: I will put the apple on counter_2.
+        Agent_{id}_Action: Rearrange[apple_0, on, counter_2, None, None]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: Mission complete!
+        Final Thought: Exit!
+        {eot_tag}
+
+        {user_tag}
+        Example 2:
+        Task: Coordinate with your teammate so that whoever sees the blue mug moves it to the living-room shelf.
+        Thought: I'll ask my teammate if they have seen the blue mug yet.
+        Agent_{id}_Action: CommunicationTool[Have you already found the blue mug?]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Message sent to teammate: "Have you already found the blue mug?"
+        {eot_tag}
+        {assistant_tag}
+        Thought: While waiting for a reply I'll explore the kitchen.
+        Agent_{id}_Action: Explore[kitchen_0]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution! I see a blue mug on counter_1.
+        {eot_tag}
+        {assistant_tag}
+        Thought: I'll tell my teammate I found it.
+        Agent_{id}_Action: CommunicationTool[I found the blue mug on counter_1. Should I move it?]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Message sent to teammate: "I found the blue mug on counter_1. Should I move it?"
+        {eot_tag}
+        {assistant_tag}
+        Thought: The teammate asked me to move it, so I need the living-room shelf name.
+        Agent_{id}_Action: FindReceptacleTool[living room shelf]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: shelves_4 is in living_room_0.
+        {eot_tag}
+        {assistant_tag}
+        Thought: I will rearrange the mug now.
+        Agent_{id}_Action: Rearrange[blue_mug_0, on, shelves_4, None, None]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: Mission accomplished.
+        Final Thought: Exit!
+        {eot_tag}
+
+        {user_tag}
+        Example 3:
+        Task: Pick a random number, share it with your teammate, and let the higher number navigate to the bathroom.
+        Thought: I'll draw a number and tell my teammate so we can compare.
+        Agent_{id}_Action: CommunicationTool[I pick 6. What number did you get?]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Message sent to teammate: "I pick 6. What number did you get?"
+        {eot_tag}
+        {assistant_tag}
+        Thought: The teammate responded with their number, so I know who should go.
+        Agent_{id}_Action: CommunicationTool[You picked the higher number. Please navigate to the bathroom.]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Message sent to teammate: "You picked the higher number. Please navigate to the bathroom."
+        {eot_tag}
+        {assistant_tag}
+        Thought: Since they asked me to go instead, I'll find the bathroom ID, then navigate there.
+        Agent_{id}_Action: FindRoomTool[bathroom]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: bathroom_1, bathroom_2 exist.
+        {eot_tag}
+        {assistant_tag}
+        Thought: I'll choose bathroom_1 as the target and move there.
+        Agent_{id}_Action: Navigate[bathroom_1]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: Task satisfied; exiting.
+        Final Thought: Exit!
+        {eot_tag}
+
+        {user_tag}
+        Task: {input}
+        {eot_tag}
+        {assistant_tag}
+        Thought:
+stopword: "Assigned!"
+end_expression: "Final Thought:"
+
+actions_parser:
+  _target_: habitat_llm.llm.instruct.utils.actions_parser
+  _partial_: true

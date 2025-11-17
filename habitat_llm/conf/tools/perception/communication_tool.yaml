@@ -1,0 +1,6 @@
+communication_tool:
+  _target_: habitat_llm.tools.perception.communication_tool.CommunicationTool
+  _recursive_: False
+  skill_config:
+    description: 'Used to exchange short text messages with the other agent. Call with text to send, or CommunicationTool[read] to listen for new messages.'
+    name: CommunicationTool

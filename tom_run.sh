@@ -1,4 +1,4 @@
-python -m habitat_llm.examples.planner_demo --config-name baselines/decentralized_react_baseline.yaml \
+python -m habitat_llm.examples.planner_demo --config-name baselines/decentralized_tom_communication.yaml \
     instruction="pick a random number from 1 to 10. the agent with higher number should navigate to the bathroom" \
     mode="cli" \
     evaluation.save_video=True \
@@ -6,4 +6,4 @@ python -m habitat_llm.examples.planner_demo --config-name baselines/decentralize
     llm@evaluation.agents.agent_1.planner.plan_config.llm=openai_chat \
     trajectory.save=True \
     'trajectory.save_options=["rgb"]' \
-    habitat.environment.max_episode_steps=1000 \
+    habitat.environment.max_episode_steps=30 \

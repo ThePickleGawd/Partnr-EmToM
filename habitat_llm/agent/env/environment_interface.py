@@ -120,6 +120,22 @@ class EnvironmentInterface:
 
         # Container to store state history of both agents
         self.agent_state_history = defaultdict(list)
+        self.communication_channels = defaultdict(list)
+        self.agent_uids = []
+        if (
+            hasattr(self.conf, "evaluation")
+            and hasattr(self.conf.evaluation, "agents")
+            and self.conf.evaluation.agents is not None
+        ):
+            try:
+                self.agent_uids = sorted(
+                    {
+                        int(agent_conf.uid)
+                        for agent_conf in self.conf.evaluation.agents.values()
+                    }
+                )
+            except Exception:
+                self.agent_uids = []
 
         # Container to store actions history of both agents
         self.agent_action_history = defaultdict(list)
@@ -299,6 +315,7 @@ class EnvironmentInterface:
 
         # Container to store state history of agents
         self.agent_state_history = defaultdict(list)
+        self.communication_channels = defaultdict(list)
 
         # Container to store action history of agents
         self.agent_action_history = defaultdict(list)
@@ -340,6 +357,32 @@ class EnvironmentInterface:
     def reset_composite_action_response(self):
         """resets _composite_action_response to empty"""
         self._composite_action_response = {}
+
+    def post_agent_message(self, sender_uid: int, message: str) -> None:
+        """Broadcast a message from one agent to all other agents."""
+        if message is None:
+            return
+        message = message.strip()
+        if message == "":
+            return
+        if len(self.agent_uids) == 0:
+            targets = [uid for uid in self.world_graph.keys() if uid != sender_uid]
+        else:
+            targets = [uid for uid in self.agent_uids if uid != sender_uid]
+        if len(targets) == 0:
+            return
+        for uid in targets:
+            self.communication_channels[uid].append(
+                {"from": sender_uid, "message": message}
+            )
+
+    def consume_agent_messages(self, receiver_uid: int):
+        """Retrieve and clear the queued messages for a given agent."""
+        if receiver_uid not in self.communication_channels:
+            return []
+        messages = self.communication_channels[receiver_uid]
+        self.communication_channels[receiver_uid] = []
+        return messages
 
     def setup_logging_for_current_episode(self):
         """

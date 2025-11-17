@@ -443,6 +443,23 @@ class LLMPlanner(Planner):
             # If no pattern is found, return the whole string
             return ""
 
+    def _consume_agent_messages(self) -> Dict[int, str]:
+        """
+        Retrieve pending inter-agent messages and format them as observations.
+
+        :return: Dict of agent uid to formatted message string.
+        """
+        message_responses: Dict[int, str] = {}
+        for agent in self.agents:
+            pending = self.env_interface.consume_agent_messages(agent.uid)
+            if len(pending) == 0:
+                continue
+            formatted = "\n".join(
+                [f"Agent_{msg['from']} said: {msg['message']}" for msg in pending]
+            )
+            message_responses[agent.uid] = formatted
+        return message_responses
+
     def _add_responses_to_prompt(self, responses: Dict[int, str]) -> str:
         """
         Add agent responses to the prompt.
@@ -628,6 +645,13 @@ class LLMPlanner(Planner):
         print_str = ""
         self.is_done = False
 
+        message_responses = self._consume_agent_messages()
+        force_replan_from_messages = len(message_responses) > 0
+        if force_replan_from_messages:
+            # Surface teammate updates immediately and trigger replanning.
+            print_str += self._add_responses_to_prompt(message_responses)
+            self.replan_required = True
+
         if self.replan_required:
             planner_info["replanned"] = {agent.uid: True for agent in self.agents}
             if verbose:
@@ -719,11 +743,14 @@ class LLMPlanner(Planner):
         # Check if replanning is required
         # Replanning is required when any of the actions being executed
         # have a response indicating success or failure (and the reason)
-        self.replan_required = any(responses.values())
+        self.replan_required = force_replan_from_messages or any(responses.values())
         print_str += self._add_responses_to_prompt(responses)
 
+        combined_responses = dict(message_responses)
+        combined_responses.update(responses)
+
         # Update planner info
-        planner_info["responses"] = responses
+        planner_info["responses"] = combined_responses
         planner_info["thought"] = {agent.uid: thought for agent in self.agents}
         planner_info["is_done"] = {agent.uid: self.is_done for agent in self.agents}
         planner_info["print"] = print_str
