@@ -504,7 +504,7 @@ def actions_parser(
                     )
 
             # Split the action info into action name and action arguments (inputs)
-            action_name, action_input = action_info.split("[")
+            action_name, action_input = action_info.split("[", 1)
             action_input = action_input.rstrip("]")
 
             # Set action_input to None if its empty

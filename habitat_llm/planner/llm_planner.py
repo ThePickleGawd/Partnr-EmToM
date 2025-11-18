@@ -646,11 +646,9 @@ class LLMPlanner(Planner):
         self.is_done = False
 
         message_responses = self._consume_agent_messages()
-        force_replan_from_messages = len(message_responses) > 0
-        if force_replan_from_messages:
-            # Surface teammate updates immediately and trigger replanning.
+        if len(message_responses) > 0:
+            # Surface teammate updates immediately; planner will incorporate them on the next replan cycle.
             print_str += self._add_responses_to_prompt(message_responses)
-            self.replan_required = True
 
         if self.replan_required:
             planner_info["replanned"] = {agent.uid: True for agent in self.agents}
@@ -743,7 +741,7 @@ class LLMPlanner(Planner):
         # Check if replanning is required
         # Replanning is required when any of the actions being executed
         # have a response indicating success or failure (and the reason)
-        self.replan_required = force_replan_from_messages or any(responses.values())
+        self.replan_required = any(responses.values())
         print_str += self._add_responses_to_prompt(responses)
 
         combined_responses = dict(message_responses)

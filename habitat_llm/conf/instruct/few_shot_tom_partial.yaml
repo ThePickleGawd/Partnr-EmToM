@@ -47,8 +47,10 @@ prompt: |-
         Thought: Mission complete!
         Final Thought: Exit!
         {eot_tag}
+        {assistant_tag}
 
         {user_tag}
+        {assistant_tag}
         Example 2:
         Task: Coordinate with your teammate so that whoever sees the blue mug moves it to the living-room shelf.
         Thought: I'll ask my teammate if they have seen the blue mug yet.
@@ -94,8 +96,10 @@ prompt: |-
         Thought: Mission accomplished.
         Final Thought: Exit!
         {eot_tag}
+        {assistant_tag}
 
         {user_tag}
+        {assistant_tag}
         Example 3:
         Task: Pick a random number, share it with your teammate, and let the higher number navigate to the bathroom.
         Thought: I'll draw a number and tell my teammate so we can compare.
@@ -122,12 +126,20 @@ prompt: |-
         Agent_{id}_Observation: bathroom_1, bathroom_2 exist.
         {eot_tag}
         {assistant_tag}
-        Thought: I'll choose bathroom_1 as the target and move there.
+        Thought: I'll choose bathroom_1 as the target and move there, then confirm arrival once I see the bathroom.
         Agent_{id}_Action: Navigate[bathroom_1]
         Assigned!
         {eot_tag}
         {user_tag}
         Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: Since I'm now inside the bathroom, I'll notify my teammate that I've arrived.
+        Agent_{id}_Action: CommunicationTool[Arrived at bathroom_1!]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Message sent to teammate: "Arrived at bathroom_1!"
         {eot_tag}
         {assistant_tag}
         Thought: Task satisfied; exiting.
