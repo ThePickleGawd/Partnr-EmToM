@@ -14,6 +14,7 @@ third_party/detectron2/
 third_party/Detic/
 wandb/
 results/
+habitat_llm.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

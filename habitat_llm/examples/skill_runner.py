@@ -143,6 +143,7 @@ def run_skills(config: omegaconf.DictConfig) -> None:
     # available skills
     skills = {
         "Navigate": "Navigate <agent_index> <entity_name>",
+        "Explore": "Explore <agent_index> <room_name>",
         "Open": "Open <agent_index> <entity_name>",
         "Close": "Close <agent_index> <entity_name>",
         "Pick": "Pick <agent_index> <entity_name>",
