@@ -260,6 +260,10 @@ class GameTool(Tool):
             args[key] = val
         return args
 
+    def get_state_description(self):
+        # Game tools don't track dynamic state; return a simple status.
+        return "Game tool ready"
+
 
 # --- Bomb-specific rendering utilities (PIL-based to avoid SDL issues) ------
 
