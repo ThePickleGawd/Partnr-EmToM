@@ -36,12 +36,28 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
 
         state = self.game_orchestrator.state
         public = self.game_orchestrator.game_spec.render_public_context(state)
-        roles = ", ".join(
+        roles_overview = ", ".join(
             [f"{aid}:{role.name}" for aid, role in state.agent_roles.items()]
         )
-        # Note: private info is left out here to avoid leaking asymmetry; planners can
-        # access it by looking at role descriptions when appropriate.
-        return f"{public}\nRoles: {roles}\nTask: {fallback_instruction}"
+
+        # Add per-agent private info and allowed tools (if specified in the game config).
+        per_agent_blocks = []
+        allowed_tools = getattr(self.game_orchestrator.game_spec, "allowed_tools", None)
+        for aid, role in state.agent_roles.items():
+            private = self.game_orchestrator.game_spec.render_private_context(aid, state)
+            tool_line = (
+                f"Allowed tools: {sorted(list(allowed_tools))}"
+                if allowed_tools
+                else "Use the provided game tools."
+            )
+            block = f"Agent {aid} ({role.name}): {private if private else 'No private info.'} {tool_line}"
+            per_agent_blocks.append(block)
+
+        per_agent_text = "\n".join(per_agent_blocks)
+
+        return (
+            f"{public}\nRoles: {roles_overview}\n{per_agent_text}\nTask: {fallback_instruction}"
+        )
 
     def _maybe_update_game(self) -> None:
         if not self.game_orchestrator or not self.game_orchestrator.state:

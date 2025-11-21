@@ -68,6 +68,9 @@ class BombGameSpec(GameSpec):
             "defuse_attempts_left": self.max_defuse_attempts,
         }
 
+        # Reveal the hidden room in logs for debugging/verification.
+        print(f"[BombGame] Secret bomb room: {bomb_room}")
+
         return GameState(
             agent_roles=roles,
             public_info=public_info,
