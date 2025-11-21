@@ -17,6 +17,9 @@ user_tag : "<|start_header_id|>user<|end_header_id|>\n\n"
 assistant_tag : "<|start_header_id|>assistant<|end_header_id|>\n\n"
 eot_tag : "<|eot_id|>"
 
+use_image_input     : True
+save_prompt_images  : False
+
 generation_params:
 
   engine          : "meta-llama/Llama-3.2-11B-Vision"

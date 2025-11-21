@@ -22,6 +22,7 @@ class CommunicationTool(PerceptionTool):
     def __init__(self, skill_config):
         super().__init__(skill_config.name)
         self.skill_config = skill_config
+        self._read_synonyms = {"", "read", "listen", "check", "receive"}
 
     def set_environment(self, env_interface):
         self.env_interface = env_interface
@@ -38,17 +39,32 @@ class CommunicationTool(PerceptionTool):
             raise ValueError("Environment Interface not set for CommunicationTool")
 
         normalized = (input_query or "").strip()
-        if normalized.lower() in {"", "read", "listen", "check", "receive"}:
+        lowered = normalized.lower()
+
+        if lowered in self._read_synonyms:
             pending = self.env_interface.consume_agent_messages(self.agent_uid)
             if len(pending) == 0:
-                return None, "No new messages from your teammate."
+                return (
+                    None,
+                    "No new teammate messages. Updates now flow into your context automatically whenever your partner speaks.",
+                )
             formatted = "\n".join(
                 [f"Agent_{msg['from']} said: {msg['message']}" for msg in pending]
             )
-            return None, formatted
+            return (
+                None,
+                "Messages are already appended to your context automatically, but here is the latest queue:\n"
+                + formatted,
+            )
+
+        if normalized == "":
+            return None, "Provide a short message to broadcast."
 
         self.env_interface.post_agent_message(self.agent_uid, normalized)
-        return None, f'Message sent to teammate: "{normalized}"'
+        return (
+            None,
+            f'Message delivered. Your teammate will see "Agent_{self.agent_uid} said: {normalized}" in their context automatically.',
+        )
 
     @property
     def argument_types(self) -> List[str]:

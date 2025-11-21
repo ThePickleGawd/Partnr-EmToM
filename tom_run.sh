@@ -1,4 +1,4 @@
-python -m habitat_llm.examples.planner_demo --config-name baselines/decentralized_tom_communication.yaml \
+python -m habitat_llm.examples.emtom --config-name baselines/decentralized_tom_communication.yaml \
     instruction="pick a random number from 1 to 10. the agent with higher number should navigate to the bathroom and explore." \
     mode="cli" \
     evaluation.save_video=True \
