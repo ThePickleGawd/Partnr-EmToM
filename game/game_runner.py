@@ -13,6 +13,7 @@ from habitat_llm.evaluation.decentralized_evaluation_runner import (
     DecentralizedEvaluationRunner,
 )
 from habitat_llm.utils import rollout_print
+from game.bomb_game.bomb_game import GameTool
 
 
 class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
@@ -26,6 +27,25 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         self.game_orchestrator = game_orchestrator
         self.base_instruction = base_instruction
         super().__init__(evaluation_runner_config_arg, env_arg)
+
+    def _inject_game_tools(self) -> None:
+        """
+        Attach game tools to each agent's tool registry so planners can call them.
+        """
+        if not self.game_orchestrator:
+            return
+        state = self.game_orchestrator.state
+        if state is None:
+            return
+        for agent in self.agents.values():
+            descs = self.game_orchestrator.game_spec.get_tools_for_agent(
+                str(agent.uid), state, self.game_orchestrator.env
+            )
+            for desc in descs:
+                if desc.name in agent.tools:
+                    continue
+                tool = GameTool(desc, self.game_orchestrator, agent.uid)
+                agent.tools[tool.name] = tool
 
     def _compose_instruction(self, fallback_instruction: str) -> str:
         """
@@ -55,8 +75,12 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
 
         per_agent_text = "\n".join(per_agent_blocks)
 
+        image_note = ""
+        if state.secret_state.get("latest_image_path"):
+            image_note = f"\nImage available: {state.secret_state.get('latest_image_path')}"
+
         return (
-            f"{public}\nRoles: {roles_overview}\n{per_agent_text}\nTask: {fallback_instruction}"
+            f"{public}\nRoles: {roles_overview}\n{per_agent_text}{image_note}\nTask: {fallback_instruction}"
         )
 
     def _maybe_update_game(self) -> None:
@@ -94,6 +118,11 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         if self.game_orchestrator and self.game_orchestrator.state is None:
             agent_ids = [str(agent.uid) for agent in self.agents.values()]
             self.game_orchestrator.start(agent_ids)
+            self._inject_game_tools()
+            print("Game + PARTNR tools per agent:")
+            for agent in self.agents.values():
+                tool_names = sorted(list(agent.tools.keys()))
+                print(f"Agent {agent.uid}: {tool_names}")
 
         composed_instruction = self._compose_instruction(base_instruction)
 
@@ -127,19 +156,42 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 observations = self.env_interface.parse_observations(obs)
                 if self.evaluation_runner_config.save_video:
                     self.dvu._store_for_video(
-                        observations, planner_info.get("high_level_actions", [])
+                        observations,
+                        planner_info.get("high_level_actions", {}),
+                        popup_images=planner_info.get("popup_images", {}),
                     )
 
             # Update game state based on latest env situation
             self._maybe_update_game()
+            # refresh game tools in case availability changed (e.g., entering bomb room)
+            self._inject_game_tools()
 
             # Get next low level actions
             low_level_actions, planner_info, should_end = self.get_low_level_actions(
                 composed_instruction, observations, self.env_interface.world_graph
             )
 
-            # Allow game termination to short-circuit the loop
+            # Prepare popup images for subsequent video overlay
+            if (
+                self.game_orchestrator
+                and self.game_orchestrator.state
+                and self.game_orchestrator.state.secret_state.get("latest_image_path")
+            ):
+                img_path = self.game_orchestrator.state.secret_state.get(
+                    "latest_image_path"
+                )
+                planner_info["popup_images"] = {
+                    agent.uid: img_path for agent in self.agents.values()
+                }
+            else:
+                planner_info["popup_images"] = {}
+
+        # Allow game termination to short-circuit the loop
             if self.game_orchestrator and self.game_orchestrator.state:
+                if self.game_orchestrator.state.terminal and not should_end:
+                    print(
+                        f"[BombGame] Game ended with outcome: {self.game_orchestrator.state.outcome}"
+                    )
                 should_end = should_end or self.game_orchestrator.state.terminal
 
             curr_env = self.env_interface.env.env.env._env
@@ -189,6 +241,21 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                     for agent_id in range(len(self.agents))
                 }
 
+            # Prepare popup images for video overlay downstream
+            if (
+                self.game_orchestrator
+                and self.game_orchestrator.state
+                and self.game_orchestrator.state.secret_state.get("latest_image_path")
+            ):
+                img_path = self.game_orchestrator.state.secret_state.get(
+                    "latest_image_path"
+                )
+                planner_info["popup_images"] = {
+                    agent.uid: img_path for agent in self.agents.values()
+                }
+            else:
+                planner_info["popup_images"] = {}
+
             copy_planner_info = copy.deepcopy(planner_info)
             self.update_agent_state_history(copy_planner_info)
             self.update_agent_action_history(copy_planner_info)
@@ -212,4 +279,9 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         info |= planner_info
         if self.game_orchestrator and self.game_orchestrator.state:
             info["game_outcome"] = self.game_orchestrator.state.outcome
+            # Emit a summary line on completion.
+            if self.game_orchestrator.state.terminal:
+                print(
+                    f"[BombGame] Final outcome: {self.game_orchestrator.state.outcome}"
+                )
         return info

@@ -74,7 +74,10 @@ class DebugVideoUtil:
         return concat_image
 
     def _store_for_video(
-        self, observations: Dict[str, Any], hl_actions: Dict[int, Any]
+        self,
+        observations: Dict[str, Any],
+        hl_actions: Dict[int, Any],
+        popup_images: Dict[int, str] = None,
     ) -> None:
         """
         Store a video with observations and text from an observation dict and an agent to action metadata dict.
@@ -99,6 +102,30 @@ class DebugVideoUtil:
                 (255, 255, 255),
                 2,
             )
+
+        # Overlay popups if provided (per agent, left/right).
+        if popup_images:
+            # we assume two agents max for overlay placement
+            for agent_idx, path in popup_images.items():
+                try:
+                    popup = cv2.imread(path)
+                    if popup is None:
+                        continue
+                    # resize popup to fit in the corner
+                    ph, pw = popup.shape[:2]
+                    scale = 0.3
+                    popup = cv2.resize(popup, (int(pw * scale), int(ph * scale)))
+                    ph, pw = popup.shape[:2]
+                    if int(agent_idx) == 0:
+                        y0, y1 = 10, 10 + ph
+                        x0, x1 = 10, 10 + pw
+                    else:
+                        y0, y1 = 10, 10 + ph
+                        x1 = frames_concat.shape[1] - 10
+                        x0 = x1 - pw
+                    frames_concat[y0:y1, x0:x1] = popup
+                except Exception:
+                    continue
 
         self.frames.append(frames_concat)
         return

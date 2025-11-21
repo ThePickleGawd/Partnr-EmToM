@@ -145,7 +145,6 @@ def write_config(config):
 def run_eval(config):
     fix_config(config)
     # Setup a seed
-    # seed = 48212516
     seed = 47668090
     t0 = time.time()
     # Setup config

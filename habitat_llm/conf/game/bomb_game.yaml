@@ -17,7 +17,7 @@ game:
   enable: true
   type: bomb_game
   max_defuse_attempts: 1
-  auto_defuse_on_enter: true
+  auto_defuse_on_enter: false
   teleport_moves: true
   instruction_prefix: "You are playing a bomb-defusal game. Follow the game rules below."
   instruction_override: "Play the bomb defusal game. Coordinate to find and defuse the bomb."

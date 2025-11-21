@@ -14,6 +14,7 @@ import copy
 import json
 import os
 import pickle
+import re
 import time
 from typing import Any, Dict, List, Optional, Union
 
@@ -436,13 +437,19 @@ class EvaluationRunner:
         if self.evaluation_runner_config.do_print:
             cprint("Instruction:", "yellow")
             print(self.current_instruction + "\n")
-        # Make hyphenated instruction for creating a filename
+        # Make a safe, short filename
+        def _slugify(text: str) -> str:
+            txt = re.sub(r"[^a-zA-Z0-9]+", "-", text.lower()).strip("-")
+            return txt if txt else "instruction"
+
         if len(output_name) == 0:
-            self.episode_filename = self.current_instruction.replace(" ", "-")[
-                :-1
-            ].lower()
+            try:
+                ep_id = self.env_interface.env.env.env._env.current_episode.episode_id
+                self.episode_filename = f"episode_{ep_id}"
+            except Exception:
+                self.episode_filename = _slugify(self.current_instruction)[:30]
         else:
-            self.episode_filename = output_name
+            self.episode_filename = _slugify(output_name)[:30]
         # check if name is too long, truncate to be system-friendly
         if len(self.episode_filename) > self.TRUNCATE_LENGTH:
             self.episode_filename = self.episode_filename[: self.TRUNCATE_LENGTH]
@@ -611,7 +618,9 @@ class EvaluationRunner:
                 if self.evaluation_runner_config.save_video:
                     # Store third person frames for generating video
                     self.dvu._store_for_video(
-                        observations, planner_info["high_level_actions"]
+                        observations,
+                        planner_info.get("high_level_actions", {}),
+                        popup_images=planner_info.get("popup_images", {}),
                     )
 
             # Get next low level actions
