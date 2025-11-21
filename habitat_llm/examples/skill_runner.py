@@ -5,8 +5,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import re
 import sys
-from typing import List, Tuple, Any
+from typing import Any, Dict, List, Tuple
 
 
 # append the path of the
@@ -20,6 +21,7 @@ from hydra.utils import instantiate
 
 from habitat_llm.utils import cprint, setup_config, fix_config
 
+from habitat_llm.tools import PerceptionTool
 from habitat_llm.agent.env import (
     EnvironmentInterface,
     register_actions,
@@ -140,16 +142,6 @@ def run_skills(config: omegaconf.DictConfig) -> None:
     ############################
     # done with setup, prompt the user and start running skills
 
-    # available skills
-    skills = {
-        "Navigate": "Navigate <agent_index> <entity_name>",
-        "Explore": "Explore <agent_index> <room_name>",
-        "Open": "Open <agent_index> <entity_name>",
-        "Close": "Close <agent_index> <entity_name>",
-        "Pick": "Pick <agent_index> <entity_name>",
-        # Place skill requires 5 arguments, comma separated, no spaces:
-        "Place": "Place <agent_index> <entity_name_0,relation_0,entity_name_1,relation_1,entity_name_2>",
-    }
     exit_skill = "exit"
     help_skill = "help"
     entity_skill = "entities"
@@ -166,26 +158,55 @@ def run_skills(config: omegaconf.DictConfig) -> None:
     print_furniture_entity_handles(env_interface.perception.gt_graph)
     print_object_entity_handles(env_interface.perception.gt_graph)
 
-    help_text = f"Available skills are {skills}. Type a skill to begin.\n alternatively type one of: \n  '{exit_skill}' - exit the program \n  '{help_skill}' - display help text \n  '{entity_skill}' - display all available entities \n  '{pdb_skill}' - enter pdb breakpoint for interactive debugging \n  '{cumulative_video_skill}' - make a single cumulative video out of all individual command clips"
+    tool_metadata: Dict[str, Dict[str, Any]] = {}
+    tool_to_agents: Dict[str, List[int]] = {}
+    for agent in planner.agents:
+        for tool_name, tool in agent.tools.items():
+            tool_to_agents.setdefault(tool_name, []).append(agent.uid)
+            if tool_name not in tool_metadata:
+                tool_metadata[tool_name] = {
+                    "description": tool.description,
+                    "type": "perception"
+                    if isinstance(tool, PerceptionTool)
+                    else "motor",
+                    "argument_types": tool.argument_types,
+                }
+
+    tool_lines = [
+        f"- {name} ({meta['type']}): {meta['description']}"
+        for name, meta in sorted(tool_metadata.items())
+    ]
+    help_text = (
+        "Call tools as '[agent_id:]ToolName[arg1, arg2, ...]' or "
+        "'ToolName <agent_id> <args>'. Separate multiple arguments with commas "
+        "for multi-argument motor skills (e.g., Place or Rearrange). "
+        "Use 'entities' to re-print entity handles.\n"
+        + "\n".join(tool_lines)
+        + f"\nOther commands: '{exit_skill}', '{help_skill}', '{entity_skill}', '{pdb_skill}', '{cumulative_video_skill}'."
+    )
     cprint(help_text, "green")
 
     # setup a sequence of commands to run immediately without manual input
     scripted_commands: List[str] = []
     if hasattr(config, "skill_runner_scripted_commands"):
         scripted_commands = config.skill_runner_scripted_commands
-        # we need special handling for "Place" skill because arguements are comma separated and need to be joined
-        place_indices = [i for i, x in enumerate(scripted_commands) if "Place" in x]
-        for i, place_ix in enumerate(place_indices):
-            corrected_ix = place_ix - i * 4  # account for removed elements
-            for j in range(1, 5):
-                # concat the elements
-                scripted_commands[corrected_ix] += (
-                    "," + scripted_commands[corrected_ix + j]
+        multi_arg_skills = {"Place", "Rearrange"}
+        # we need special handling for multi-argument skills because arguments are comma separated and need to be joined
+        for skill_name in multi_arg_skills:
+            skill_indices = [
+                i for i, x in enumerate(scripted_commands) if skill_name in x
+            ]
+            for i, skill_ix in enumerate(skill_indices):
+                corrected_ix = skill_ix - i * 4  # account for removed elements
+                for j in range(1, 5):
+                    # concat the elements
+                    scripted_commands[corrected_ix] += (
+                        "," + scripted_commands[corrected_ix + j]
+                    )
+                scripted_commands = (
+                    scripted_commands[: corrected_ix + 1]
+                    + scripted_commands[corrected_ix + 5 :]
                 )
-            scripted_commands = (
-                scripted_commands[: corrected_ix + 1]
-                + scripted_commands[corrected_ix + 5 :]
-            )
     print(scripted_commands)
 
     # collect debug frames to create a final video
@@ -231,49 +252,105 @@ def run_skills(config: omegaconf.DictConfig) -> None:
                 )
                 dvu.frames = cumulative_frames
                 dvu._make_video(postfix="cumulative", play=show_command_videos)
-        elif user_input in skills:
-            # fill information piece by piece
-            selected_skill = user_input
-            # get the agent index
-            agent_ix = input("Agent Index (0=robot, 1=human) = ")
-            if agent_ix not in ["0", "1"]:
-                cprint("... invalid Agent Index, aborting.", "red")
-                continue
-            target_entity_name = input("Target Entity = ")
-        elif user_input.split(" ")[0] in skills:
-            # attempt to parse full skill definition from string
-            skill_components = user_input.split(" ")
-            selected_skill = skill_components[0]
-            agent_ix = skill_components[1]
-            if agent_ix not in ["0", "1"]:
-                cprint("... invalid Agent Index, aborting.", "red")
-                continue
-            target_entity_name = skill_components[2]
         else:
-            cprint("... invalid command.", "red")
+            raw_command = user_input.strip()
+            agent_hint = None
+            agent_match = re.match(r"^(?P<agent>[0-9]+)[:]\s*(?P<body>.+)$", raw_command)
+            if agent_match:
+                agent_hint = agent_match.group("agent")
+                raw_command = agent_match.group("body").strip()
 
-        # configure and run the skill
-        if selected_skill is not None:
+            bracket_match = re.match(
+                r"^(?P<tool>[A-Za-z0-9_]+)\s*\[(?P<args>.*)\]\s*$", raw_command
+            )
+            if bracket_match:
+                selected_skill = bracket_match.group("tool")
+                agent_ix = agent_hint
+                target_entity_name = bracket_match.group("args").strip()
+            else:
+                skill_components = raw_command.split(" ", 1)
+                selected_skill = skill_components[0]
+                agent_ix = agent_hint
+                target_entity_name = ""
+                if len(skill_components) > 1:
+                    target_entity_name = skill_components[1].strip()
+            if selected_skill not in tool_metadata:
+                selected_skill = None
+                cprint("... invalid command.", "red")
+                command_index += 1
+                continue
+
+            valid_agents = tool_to_agents.get(selected_skill, [])
+            scripted_mode = len(scripted_commands) > command_index
+            if agent_ix is None:
+                if len(valid_agents) == 1:
+                    agent_ix = str(valid_agents[0])
+                elif scripted_mode:
+                    fallback_agent = (
+                        env_interface.robot_agent_uid
+                        if env_interface.robot_agent_uid in valid_agents
+                        else valid_agents[0]
+                    )
+                    agent_ix = str(fallback_agent)
+                else:
+                    agent_ix = input(
+                        f"Agent Index for {selected_skill} {valid_agents} (0=robot, 1=human) = "
+                    )
+
+            try:
+                agent_ix_int = int(agent_ix)
+            except (TypeError, ValueError):
+                cprint("... invalid Agent Index, aborting.", "red")
+                command_index += 1
+                continue
+
+            if agent_ix_int not in valid_agents:
+                cprint(
+                    f"... invalid Agent Index for {selected_skill}, choose from {valid_agents}.",
+                    "red",
+                )
+                command_index += 1
+                continue
+
+            if target_entity_name == "" and not scripted_mode:
+                target_entity_name = input("Tool argument(s) = ")
+
+            if selected_skill in {"Place", "Rearrange"} and "," not in target_entity_name:
+                tokens = target_entity_name.split()
+                if len(tokens) == 5:
+                    target_entity_name = ",".join(tokens)
+
             high_level_skill_actions = {
-                int(agent_ix): (selected_skill, target_entity_name, None)
+                int(agent_ix_int): (selected_skill, target_entity_name, None)
             }
 
-            ############################
-            # run the skill
+            agent_tool = planner.get_agent_from_uid(agent_ix_int).get_tool_from_name(
+                selected_skill
+            )
             try:
-                responses, _, frames = execute_skill(
-                    high_level_skill_actions,
-                    planner,
-                    vid_postfix=f"{command_index}_",
-                    make_video=make_video,
-                    play_video=show_command_videos,
-                )
-                command_history.append((user_input, responses[int(agent_ix)]))
-                skill_name = high_level_skill_actions[int(agent_ix)][0]
-                print(
-                    f"{skill_name} completed. Response = '{responses[int(agent_ix)]}'"
-                )
-                cumulative_frames.extend(frames)
+                if isinstance(agent_tool, PerceptionTool):
+                    observations = planner.env_interface.get_observations()
+                    _, responses = planner.process_high_level_actions(
+                        high_level_skill_actions, observations
+                    )
+                    command_history.append((user_input, responses[int(agent_ix_int)]))
+                    print(
+                        f"{selected_skill} completed. Response = '{responses[int(agent_ix_int)]}'"
+                    )
+                else:
+                    responses, _, frames = execute_skill(
+                        high_level_skill_actions,
+                        planner,
+                        vid_postfix=f"{command_index}_",
+                        make_video=make_video,
+                        play_video=show_command_videos,
+                    )
+                    command_history.append((user_input, responses[int(agent_ix_int)]))
+                    skill_name = high_level_skill_actions[int(agent_ix_int)][0]
+                    print(
+                        f"{skill_name} completed. Response = '{responses[int(agent_ix_int)]}'"
+                    )
+                    cumulative_frames.extend(frames)
             except Exception as e:
                 failure_string = f"Failed to execute skill with exception: {str(e)}"
                 print(failure_string)
