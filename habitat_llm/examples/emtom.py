@@ -45,6 +45,20 @@ from habitat_llm.evaluation import (
 )
 from habitat_llm.agent.env.dataset import CollaborationDatasetV0
 from habitat_baselines.utils.info_dict import extract_scalars_from_info
+from game.game import GameOrchestrator
+from game.bomb_game import BombGameSpec
+from game.habitat_adapter import HabitatEnvironmentAdapter
+from game.game_runner import GameDecentralizedEvaluationRunner
+
+
+def _ensure_game_config(config):
+    """
+    Make sure a game config is present. If the Hydra run did not specify a /game
+    group, inject a disabled placeholder so downstream logic can rely on it.
+    """
+    if not hasattr(config, "game"):
+        config.game = OmegaConf.create({"enable": False})
+    return config
 
 
 def get_output_file(config, env_interface):
@@ -136,6 +150,7 @@ def run_eval(config):
     t0 = time.time()
     # Setup config
     config = setup_config(config, seed)
+    config = _ensure_game_config(config)
     dataset = CollaborationDatasetV0(config.habitat.dataset)
 
     write_config(config)
@@ -246,6 +261,9 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
         cprint("Failed to setup config. Exiting", "red")
         return
 
+    game_orchestrator = None
+    game_instruction_override = None
+
     # Setup interface with the simulator if the planner depends on it
     if config.env == "habitat":
         # Remove sensors if we are not saving video
@@ -274,6 +292,20 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
             print("Error initializing the environment")
             if config.evaluation.log_data:
                 save_exception_message(config, env_interface)
+
+        # Optional game layer
+        if hasattr(config, "game") and config.game.enable:
+            adapter = HabitatEnvironmentAdapter(env_interface)
+            if config.game.type == "bomb_game":
+                spec = BombGameSpec(
+                    max_defuse_attempts=config.game.max_defuse_attempts,
+                    auto_defuse_on_enter=config.game.auto_defuse_on_enter,
+                )
+            else:
+                raise ValueError(f"Unknown game type {config.game.type}")
+            game_orchestrator = GameOrchestrator(spec, adapter)
+            if config.game.instruction_override:
+                game_instruction_override = config.game.instruction_override
     else:
         env_interface = None
 
@@ -282,7 +314,17 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
     if config.evaluation.type == "centralized":
         eval_runner = CentralizedEvaluationRunner(config.evaluation, env_interface)
     elif config.evaluation.type == "decentralized":
-        eval_runner = DecentralizedEvaluationRunner(config.evaluation, env_interface)
+        if game_orchestrator:
+            eval_runner = GameDecentralizedEvaluationRunner(
+                config.evaluation,
+                env_interface,
+                game_orchestrator,
+                base_instruction=game_instruction_override,
+            )
+        else:
+            eval_runner = DecentralizedEvaluationRunner(
+                config.evaluation, env_interface
+            )
     else:
         cprint(
             "Invalid planner type. Please select between 'centralized' or 'decentralized'. Exiting",
@@ -316,9 +358,20 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
 
     os.makedirs(config.paths.results_dir, exist_ok=True)
 
+    def compose_instruction(base_instruction: str) -> str:
+        if hasattr(config, "game"):
+            prefix = getattr(config.game, "instruction_prefix", "")
+            override = getattr(config.game, "instruction_override", "")
+            if override:
+                base_instruction = override
+            if prefix:
+                base_instruction = prefix + " " + base_instruction
+        return base_instruction
+
     # Run the planner
     if config.mode == "cli":
         instruction = "Go to the bed" if not config.instruction else config.instruction
+        instruction = compose_instruction(instruction)
 
         cprint(f'\nExecuting instruction: "{instruction}"', "blue")
         try:
@@ -339,6 +392,7 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
 
                 # Get instruction
                 instruction = env_interface.env.env.env._env.current_episode.instruction
+                instruction = compose_instruction(instruction)
                 print("\n\nEpisode", episode_id)
 
                 try:
