@@ -7,3 +7,6 @@
 [submodule "third_party/transformers-CFG"]
 	path = third_party/transformers-CFG
 	url = https://github.com/MatthewChang/transformers-CFG
+[submodule "third_party/habitat-sim"]
+	path = third_party/habitat-sim
+	url = https://github.com/facebookresearch/habitat-sim.git
