@@ -1,7 +1,8 @@
 """
 Time-shifted reasoning game where two agents inhabit the same room at different
-points in time. The past agent can prepare objects and leave degraded clues; the
-future agent inspects the decayed scene and must identify the intended target.
+points in time. Changes propagate immediately to the future copy, so both roles
+can act concurrently: the past agent prepares objects and leaves degraded clues;
+the future agent inspects the decayed scene and must identify the intended target.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ class TimeGameSpec(GameSpec):
     """
     Game flow:
     - Agent_0 starts as the Past role, Agent_1+ are Future roles.
-    - Past can inspect the pristine room, mark/protect items, and then call
-      advance_time to lock in the future state.
+    - Past inspects the pristine room, marks/protects items; changes propagate
+      instantly to the decayed copy visible to the Future.
     - Future inspects the decayed room and submits the target item. Success if
       the submission matches the hidden target. Communication is allowed.
     """
@@ -44,7 +45,6 @@ class TimeGameSpec(GameSpec):
             "annotate_item",
             "protect_item",
             "reposition_item",
-            "advance_time",
             "inspect_future_room",
             "stabilize_item",
             "submit_target_item",
@@ -122,18 +122,16 @@ class TimeGameSpec(GameSpec):
             "game": "time_game",
             "rooms": [room_name],
             "rules": (
-                "Two copies of the same room exist at different times. "
+                "Two copies of the same room exist at different times; changes propagate instantly to the future. "
                 "The Past agent prepares the room; the Future agent inspects the decayed state and must name the target item. "
-                "Communication is allowed, but the environment will distort physical artifacts."
+                "Communication is allowed, and decay is deterministic."
             ),
         }
 
         secret_state = {
-            "phase": "past",
             "room_name": room_name,
             "initial_items": items,
-            "future_items": [],
-            "decay_applied": False,
+            "future_items": [self._apply_decay(copy.deepcopy(it)) for it in items],
             "target_item": target_item,
             "submissions_left": self.max_submissions,
             "outcome": None,
@@ -153,7 +151,6 @@ class TimeGameSpec(GameSpec):
         if role is None:
             return []
 
-        phase = state.secret_state.get("phase", "past")
         tools: List[ToolDescriptor] = [
             ToolDescriptor(
                 name="decay_rules",
@@ -162,7 +159,7 @@ class TimeGameSpec(GameSpec):
             )
         ]
 
-        if role.name == "Past" and phase == "past":
+        if role.name == "Past":
             tools.extend(
                 [
                     ToolDescriptor(
@@ -189,14 +186,14 @@ class TimeGameSpec(GameSpec):
                         handler=self._reposition_item,
                     ),
                     ToolDescriptor(
-                        name="advance_time",
-                        description="Lock in your preparations and jump the scenario to the future.",
-                        handler=self._advance_time,
+                        name="inspect_future_room",
+                        description="See the decayed items, their condition, and any surviving markings.",
+                        handler=self._inspect_future_room,
                     ),
                 ]
             )
 
-        if phase == "future":
+        if role.name == "Future":
             tools.append(
                 ToolDescriptor(
                     name="inspect_future_room",
@@ -234,10 +231,9 @@ class TimeGameSpec(GameSpec):
         return False, None
 
     def render_public_context(self, state: GameState) -> str:
-        phase = state.secret_state.get("phase", "past")
         room = state.secret_state.get("room_name", "the room")
         return (
-            f"Game: Time-separated room puzzle in {room}. Current phase: {phase.upper()}. "
+            f"Game: Time-separated room puzzle in {room}. Changes propagate instantly. "
             "Past prepares objects; Future inspects decay. Communication is allowed."
         )
 
@@ -249,11 +245,11 @@ class TimeGameSpec(GameSpec):
             target = role.private_info.get("target_item", "")
             return (
                 f"You are in the early timeline. Protect and mark items so the future agent can recover '{target}'. "
-                "When ready, call advance_time."
+                "All changes immediately affect the future view."
             )
         if role.name == "Future":
             return (
-                "You arrive after time has passed. Inspect the damaged scene and infer the intended target item."
+                "You arrive after time has passed. Inspect the damaged scene and infer the intended target item. Updates from the past appear immediately."
             )
         return ""
 
@@ -277,6 +273,7 @@ class TimeGameSpec(GameSpec):
         if not item:
             return {"ok": False, "error": f"Unknown item '{item_name}'"}
         item["note"] = message.strip()[:140]
+        self._sync_future(orchestrator.state)
         return {"ok": True, "message": f"Annotated {item['name']} with a note."}
 
     def _protect_item(
@@ -295,6 +292,7 @@ class TimeGameSpec(GameSpec):
         if not item:
             return {"ok": False, "error": f"Unknown item '{item_name}'"}
         item["protection"] = method
+        self._sync_future(orchestrator.state)
         return {
             "ok": True,
             "message": f"Applied '{method}' to {item['name']}: {self._protections[method]['note']}",
@@ -314,28 +312,14 @@ class TimeGameSpec(GameSpec):
             return {"ok": False, "error": f"Unknown item '{item_name}'"}
         loc = location.strip() or self.rng.choice(self._locations)
         item["location"] = loc
+        self._sync_future(orchestrator.state)
         return {"ok": True, "message": f"Placed {item['name']} at '{loc}'."}
-
-    def _advance_time(self, agent_id: str, orchestrator, **_: Any) -> Dict[str, Any]:
-        state = orchestrator.state
-        if state.secret_state.get("decay_applied"):
-            return {"ok": True, "message": "Time already advanced."}
-        initial_items = state.secret_state.get("initial_items", [])
-        future_items = [self._apply_decay(copy.deepcopy(item)) for item in initial_items]
-        state.secret_state["future_items"] = future_items
-        state.secret_state["decay_applied"] = True
-        state.secret_state["phase"] = "future"
-        return {"ok": True, "message": "Time advanced. Future agent may inspect the decayed room now."}
 
     def _inspect_future_room(
         self, agent_id: str, orchestrator, **_: Any
     ) -> Dict[str, Any]:
         state = orchestrator.state
-        if not state.secret_state.get("decay_applied"):
-            return {
-                "ok": False,
-                "error": "Time has not advanced yet. Ask the past agent to call advance_time.",
-            }
+        self._sync_future(state)
         future_items = state.secret_state.get("future_items", [])
         return {"ok": True, "items": self._summarize_items(future_items, reveal_notes=True)}
 
@@ -343,8 +327,6 @@ class TimeGameSpec(GameSpec):
         self, agent_id: str, orchestrator, item_name: str = "", **_: Any
     ) -> Dict[str, Any]:
         state = orchestrator.state
-        if not state.secret_state.get("decay_applied"):
-            return {"ok": False, "error": "Cannot stabilize before time advance."}
         future_items = state.secret_state.get("future_items", [])
         item = self._find_item(future_items, item_name)
         if not item:
@@ -426,8 +408,9 @@ class TimeGameSpec(GameSpec):
         profile = self._decay_profiles.get(
             material, {"decay": self.decay_strength, "noise": 0.05}
         )
+        rng = random.Random(f"decay-{item.get('name','')}-{material}")
         base_decay = profile["decay"]
-        noise = self.rng.uniform(-profile["noise"], profile["noise"])
+        noise = rng.uniform(-profile["noise"], profile["noise"])
         decay_amt = max(0.05, min(0.95, base_decay + noise))
 
         protection = item.get("protection")
@@ -488,3 +471,12 @@ class TimeGameSpec(GameSpec):
                 entry["protection"] = item.get("protection")
             summary.append(entry)
         return summary
+
+    def _sync_future(self, state: GameState) -> None:
+        """
+        Recompute the future view from the current initial_items with deterministic decay.
+        """
+        initial_items = state.secret_state.get("initial_items", [])
+        state.secret_state["future_items"] = [
+            self._apply_decay(copy.deepcopy(item)) for item in initial_items
+        ]
