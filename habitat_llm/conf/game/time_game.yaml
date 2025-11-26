@@ -1,0 +1,46 @@
+# @package _global_
+
+# Compose a runnable config for the time-separated room game.
+defaults:
+  - /examples/planner_multi_agent_demo_config
+  - override /evaluation: decentralized_evaluation_runner_multi_agent
+  - override /llm@evaluation.agents.agent_0.planner.plan_config.llm: openai_chat
+  - override /llm@evaluation.agents.agent_1.planner.plan_config.llm: openai_chat
+  - override /agent@evaluation.agents.agent_0.config: tom_agent
+  - override /agent@evaluation.agents.agent_1.config: tom_agent
+  - override /instruct@evaluation.agents.agent_0.planner.plan_config.instruct: few_shot_decentralized_partial_robot_spatialobjstates_instruct
+  - override /instruct@evaluation.agents.agent_1.planner.plan_config.instruct: few_shot_decentralized_partial_robot_spatialobjstates_instruct
+  - _self_
+
+# Game config
+game:
+  enable: true
+  type: time_game
+  max_submissions: 2
+  decay_strength: 0.35
+  instruction_prefix: "You are playing a time-separated coordination puzzle. Follow the game rules below."
+  instruction_override: "Play the time-shifted room game. Past prepares objects; Future identifies the intended target item."
+
+# Task/env tweaks for the time game
+instruction: "${game.instruction_override}"
+agent_asymmetry: True
+world_model:
+  partial_obs: True
+
+evaluation:
+  type: decentralized
+  agents:
+    agent_0:
+      planner:
+        plan_config:
+          constrained_generation: True
+          replanning_threshold: 50
+          llm:
+            inference_mode: "rlm"
+    agent_1:
+      planner:
+        plan_config:
+          constrained_generation: True
+          replanning_threshold: 50
+          llm:
+            inference_mode: "rlm"

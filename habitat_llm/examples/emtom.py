@@ -47,6 +47,7 @@ from habitat_llm.agent.env.dataset import CollaborationDatasetV0
 from habitat_baselines.utils.info_dict import extract_scalars_from_info
 from game.game import GameOrchestrator
 from game.bomb_game import BombGameSpec
+from game.time_game import TimeGameSpec
 from game.habitat_adapter import HabitatEnvironmentAdapter
 from game.game_runner import GameDecentralizedEvaluationRunner
 
@@ -299,6 +300,11 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 spec = BombGameSpec(
                     max_defuse_attempts=config.game.max_defuse_attempts,
                     auto_defuse_on_enter=config.game.auto_defuse_on_enter,
+                )
+            elif config.game.type == "time_game":
+                spec = TimeGameSpec(
+                    max_submissions=getattr(config.game, "max_submissions", 2),
+                    decay_strength=getattr(config.game, "decay_strength", 0.35),
                 )
             else:
                 raise ValueError(f"Unknown game type {config.game.type}")

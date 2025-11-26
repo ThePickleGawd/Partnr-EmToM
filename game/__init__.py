@@ -11,6 +11,8 @@ from game.game import (
 )
 from game.habitat_adapter import HabitatEnvironmentAdapter
 from game.game_runner import GameDecentralizedEvaluationRunner
+from game.time_game import TimeGameSpec
+from game.game_tool import GameTool
 
 __all__ = [
     "AgentRole",
@@ -22,4 +24,6 @@ __all__ = [
     "ToolDescriptor",
     "HabitatEnvironmentAdapter",
     "GameDecentralizedEvaluationRunner",
+    "TimeGameSpec",
+    "GameTool",
 ]

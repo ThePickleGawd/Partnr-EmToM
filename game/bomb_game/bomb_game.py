@@ -17,7 +17,6 @@ from game.game import (
     GameState,
     ToolDescriptor,
 )
-from habitat_llm.tools import Tool
 import os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -217,52 +216,6 @@ class BombGameSpec(GameSpec):
             "message": "Bomb defused!",
             "image": state.secret_state.get("latest_image_path"),
         }
-
-
-class GameTool(Tool):
-    """
-    Simple Tool wrapper around BombGameSpec tool descriptors so planners can invoke
-    game-specific actions without modifying agent configs.
-    """
-
-    def __init__(self, descriptor: ToolDescriptor, orchestrator: GameOrchestrator, agent_uid: int):
-        super().__init__(descriptor.name, agent_uid_arg=agent_uid)
-        self.descriptor = descriptor
-        self.orchestrator = orchestrator
-        self._argument_types = ["string"] * len(descriptor.parameters.keys())
-
-    @property
-    def description(self) -> str:
-        return self.descriptor.description
-
-    @property
-    def argument_types(self) -> List[str]:
-        return self._argument_types
-
-    def process_high_level_action(self, input_query, observations):
-        # input_query may include arguments separated by comma; pass raw to handler
-        try:
-            result = self.descriptor.handler(agent_id=str(self.agent_uid), orchestrator=self.orchestrator, **self._parse_args(input_query))
-            if isinstance(result, dict):
-                if result.get("ok", True):
-                    return None, result.get("message", "Success")
-                return None, result.get("error", "Failed")
-            return None, str(result)
-        except Exception as e:
-            return None, f"Error executing {self.name}: {e}"
-
-    def _parse_args(self, input_query: str) -> Dict[str, Any]:
-        args = {}
-        if not self.descriptor.parameters:
-            return args
-        parts = [p.strip() for p in input_query.split(",") if p.strip()]
-        for key, val in zip(self.descriptor.parameters.keys(), parts):
-            args[key] = val
-        return args
-
-    def get_state_description(self):
-        # Game tools don't track dynamic state; return a simple status.
-        return "Game tool ready"
 
 
 # --- Bomb-specific rendering utilities (PIL-based to avoid SDL issues) ------

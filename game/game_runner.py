@@ -13,7 +13,7 @@ from habitat_llm.evaluation.decentralized_evaluation_runner import (
     DecentralizedEvaluationRunner,
 )
 from habitat_llm.utils import rollout_print
-from game.bomb_game.bomb_game import GameTool
+from game.game_tool import GameTool
 
 
 class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
