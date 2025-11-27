@@ -155,10 +155,26 @@ class GameOrchestrator:
         self.game_spec = game_spec
         self.env = env_adapter
         self.state: Optional[GameState] = None
+        self.turn_limit: Optional[int] = None
+        self.turn_count: int = 0
 
     def start(self, agent_ids: List[str]) -> GameState:
         self.state = self.game_spec.initialize(agent_ids, self.env)
         return self.state
+
+    def increment_turn(self) -> bool:
+        """
+        Increment turn counter. If a turn limit is set and exceeded, mark terminal.
+        Returns True if still allowed to proceed, False if limit reached.
+        """
+        self.turn_count += 1
+        if self.turn_limit is not None and self.turn_count >= self.turn_limit:
+            if self.state:
+                self.state.terminal = True
+                if self.state.outcome is None:
+                    self.state.outcome = "failure_turn_limit"
+            return False
+        return True
 
     def get_public_info(self) -> Dict[str, Any]:
         return self.state.public_info if self.state else {}
@@ -209,4 +225,3 @@ class GameOrchestrator:
         self.state.outcome = outcome
 
         return result
-

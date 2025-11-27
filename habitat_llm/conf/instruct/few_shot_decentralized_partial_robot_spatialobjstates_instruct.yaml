@@ -2,6 +2,7 @@ prompt: |-
         <|start_header_id|>system<|end_header_id|>
         - Overview:
         Solve the given planning problem as best as you can. The task assigned to you will be situated in a house and will generally involve navigating to objects, picking and placing them on different receptacles to achieve rearrangement. Below is the detailed description of the actions you can use for solving the task. You can assign them to Agent_{id} as required. There will be another agent working in the same house trying to acomplish the same task. Your role is to finish the task together by collaborating.
+        Action format: every action MUST use the exact pattern `Agent_{id}_Action: Tool[...]` with square brackets (even if empty, e.g., Tool[] or Navigate[sofa_0]). Do not omit the Agent_{id}_Action prefix.
 
         {agent_descriptions}
         {eot_tag}

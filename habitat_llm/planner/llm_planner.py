@@ -460,7 +460,9 @@ class LLMPlanner(Planner):
             message_responses[agent.uid] = formatted
         return message_responses
 
-    def _add_responses_to_prompt(self, responses: Dict[int, str]) -> str:
+    def _add_responses_to_prompt(
+        self, responses: Dict[int, str], verbose: bool = False
+    ) -> str:
         """
         Add agent responses to the prompt.
 
@@ -547,7 +549,8 @@ class LLMPlanner(Planner):
                 self.trace += result
                 print_str += result
             self.curr_prompt += self.planner_config.llm.eot_tag
-            print(self.curr_prompt)
+            if verbose:
+                print(self.curr_prompt)
 
         # Force add thought after every observation
         if self.planner_config.planning_mode.lower() == "cot":

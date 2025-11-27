@@ -163,6 +163,20 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
 
             # Update game state based on latest env situation
             self._maybe_update_game()
+            # Optional global game turn limit; only count iterations where planners produced actions/info.
+            if (
+                self.game_orchestrator
+                and self.game_orchestrator.state
+                and self.game_orchestrator.turn_limit is not None
+            ):
+                has_actions = bool(low_level_actions) or bool(
+                    planner_info.get("high_level_actions")
+                )
+                if has_actions:
+                    allowed = self.game_orchestrator.increment_turn()
+                    if not allowed:
+                        should_end = True
+
             # refresh game tools in case availability changed (e.g., entering bomb room)
             self._inject_game_tools()
 

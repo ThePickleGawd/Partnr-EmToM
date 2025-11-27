@@ -23,6 +23,22 @@ class HabitatEnvironmentAdapter(EnvironmentAdapter):
         rooms = self.env.full_world_graph.get_all_rooms()
         return [room.name for room in rooms]
 
+    def list_objects(self) -> List[str]:
+        """
+        Return all known object names from the world graph.
+        """
+        try:
+            return [obj.name for obj in self.env.full_world_graph.get_all_objects()]
+        except Exception:
+            return []
+
+    def list_switches(self) -> List[str]:
+        """
+        Placeholder for switch enumeration if environment exposes them;
+        currently unused but kept for API symmetry.
+        """
+        return []
+
     def get_agent_room(self, agent_id: str) -> Optional[str]:
         agent_name = f"agent_{agent_id}"
         try:

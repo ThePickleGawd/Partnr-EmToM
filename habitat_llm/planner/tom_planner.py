@@ -467,7 +467,9 @@ class LLMPlanner(Planner):
             message_responses[agent.uid] = formatted
         return message_responses
 
-    def _add_responses_to_prompt(self, responses: Dict[int, str]) -> str:
+    def _add_responses_to_prompt(
+        self, responses: Dict[int, str], verbose: bool = False
+    ) -> str:
         """
         Add agent responses to the prompt.
 
@@ -547,13 +549,14 @@ class LLMPlanner(Planner):
                         result = (
                             "No new objects or updates on known objects were found.\n"
                         )
-                else:
-                    result = f"Objects: {objects}\n"
-                self.curr_obj_states = objects
-                self.curr_prompt += result
-                self.trace += result
-                print_str += result
-            self.curr_prompt += self.planner_config.llm.eot_tag
+            else:
+                result = f"Objects: {objects}\n"
+            self.curr_obj_states = objects
+            self.curr_prompt += result
+            self.trace += result
+            print_str += result
+        self.curr_prompt += self.planner_config.llm.eot_tag
+        if verbose:
             print(self.curr_prompt)
 
         # Force add thought after every observation
