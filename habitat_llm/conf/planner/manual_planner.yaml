@@ -1,0 +1,2 @@
+_target_: habitat_llm.planner.manual_planner.ManualPlanner
+plan_config: {}

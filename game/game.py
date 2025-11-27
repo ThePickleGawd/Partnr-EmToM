@@ -157,6 +157,7 @@ class GameOrchestrator:
         self.state: Optional[GameState] = None
         self.turn_limit: Optional[int] = None
         self.turn_count: int = 0
+        self._last_action_sig: Optional[str] = None
 
     def start(self, agent_ids: List[str]) -> GameState:
         self.state = self.game_spec.initialize(agent_ids, self.env)
@@ -175,6 +176,35 @@ class GameOrchestrator:
                     self.state.outcome = "failure_turn_limit"
             return False
         return True
+
+    def should_count_turn(self, planner_info: dict, low_level_actions: dict) -> bool:
+        """
+        Count a turn when we either executed low-level actions or received a new
+        high-level action signature. Prevents burning turns on identical repeated
+        planner states (e.g., waiting on the same action).
+        """
+        if low_level_actions:
+            self._last_action_sig = None
+            return True
+
+        sig = None
+        if planner_info and "high_level_actions" in planner_info:
+            try:
+                # Deterministic signature for comparison
+                items = sorted(
+                    (aid, act[0], act[1]) for aid, act in planner_info["high_level_actions"].items()
+                )
+                sig = str(items)
+            except Exception:
+                sig = str(planner_info.get("high_level_actions"))
+
+        if sig is None:
+            return False
+
+        if sig != self._last_action_sig:
+            self._last_action_sig = sig
+            return True
+        return False
 
     def get_public_info(self) -> Dict[str, Any]:
         return self.state.public_info if self.state else {}

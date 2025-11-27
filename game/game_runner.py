@@ -169,10 +169,7 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 and self.game_orchestrator.state
                 and self.game_orchestrator.turn_limit is not None
             ):
-                has_actions = bool(low_level_actions) or bool(
-                    planner_info.get("high_level_actions")
-                )
-                if has_actions:
+                if self.game_orchestrator.should_count_turn(planner_info, low_level_actions):
                     allowed = self.game_orchestrator.increment_turn()
                     if not allowed:
                         should_end = True

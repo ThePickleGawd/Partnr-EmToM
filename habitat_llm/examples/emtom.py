@@ -50,6 +50,7 @@ from game.bomb_game import BombGameSpec
 from game.time_game import TimeGameSpec
 from game.habitat_adapter import HabitatEnvironmentAdapter
 from game.game_runner import GameDecentralizedEvaluationRunner
+from omegaconf import OmegaConf
 
 
 def _ensure_game_config(config):
@@ -315,6 +316,19 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 game_instruction_override = config.game.instruction_override
     else:
         env_interface = None
+
+    # Optional manual control per agent
+    manual_agents = getattr(config.game, "manual_agents", [])
+    if manual_agents:
+        for aid in manual_agents:
+            agent_key = f"agent_{aid}"
+            if hasattr(config.evaluation.agents, agent_key):
+                config.evaluation.agents[agent_key].planner = OmegaConf.create(
+                    {
+                        "_target_": "habitat_llm.planner.manual_planner.ManualPlanner",
+                        "plan_config": {},
+                    }
+                )
 
     # Instantiate the agent planner
     eval_runner: EvaluationRunner = None
