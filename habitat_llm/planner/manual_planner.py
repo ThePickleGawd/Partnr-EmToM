@@ -18,8 +18,8 @@ class ManualPlanner(Planner):
 
     def _prompt_action(self, agent_uid: int) -> Tuple[str, str, str]:
         available = sorted(list(self.agents[0].tools.keys()))
-        header = f"\n[Manual CLI] Agent_{agent_uid} | Tools: {available}"
-        prompt = f"{header}\nEnter Tool[arg1, arg2] (blank=Wait, 'done'=finish): "
+        header = f"\nAgent_{agent_uid} > Tools: {available}"
+        prompt = f"{header}\nAgent_{agent_uid} > "
         while True:
             try:
                 raw = input(prompt).strip()
@@ -43,7 +43,12 @@ class ManualPlanner(Planner):
         else:
             name = raw
             args = ""
-        return name.strip(), args, None
+        name = name.strip()
+        # Validate tool name
+        if name not in available and name not in {"Wait", "Done"}:
+            print(f"[Warning] Invalid tool '{name}'. Valid: {available}. Try again.")
+            return self._prompt_action(agent_uid)
+        return name, args, None
 
     def get_next_action(
         self,
@@ -58,7 +63,6 @@ class ManualPlanner(Planner):
                 world_desc = world_graph[self.agents[0].uid].get_world_descr(
                     is_human_wg=False
                 )
-                print("\n[Manual CLI] Initial world graph:")
                 print(world_desc)
             except Exception:
                 pass
@@ -87,6 +91,11 @@ class ManualPlanner(Planner):
             hl_actions, observations
         )
 
+        # Fill empty responses to avoid downstream null issues
+        for agent in self.agents:
+            if agent.uid not in responses or not responses[agent.uid]:
+                responses[agent.uid] = "Manual action acknowledged."
+
         info = {
             "high_level_actions": hl_actions,
             "responses": responses,
@@ -95,3 +104,9 @@ class ManualPlanner(Planner):
             "is_done": {agent.uid: self.is_done for agent in self.agents},
         }
         return low_level_actions, info, self.is_done
+
+    def reset(self) -> None:
+        """Reset manual planner state between episodes."""
+        self.is_done = False
+        self._printed_world = False
+        self._last_action_sig = None

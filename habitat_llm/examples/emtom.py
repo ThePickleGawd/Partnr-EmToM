@@ -357,6 +357,30 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
         )
         return
 
+    # Pretty-print win condition/context at start for games
+    if game_orchestrator:
+        # Ensure game state exists
+        if game_orchestrator.state is None:
+            agent_ids = [str(agent.uid) for agent in eval_runner.agents.values()]
+            try:
+                game_orchestrator.start(agent_ids)
+            except Exception:
+                pass
+        if game_orchestrator.state:
+            banner = "=" * 60
+            state = game_orchestrator.state
+            target = state.secret_state.get("target_item", "unknown")
+            patterns = state.secret_state.get("patterns", {})
+            target_pattern = state.secret_state.get("target_pattern", [])
+            cprint("\n" + banner, "green")
+            cprint("GAME START: Submit the correct target item to win.", "green")
+            cprint(f"Hidden target (Past private): {target}", "yellow")
+            if target_pattern:
+                cprint(f"Target effect pattern (Past private): {target_pattern}", "yellow")
+            if patterns:
+                cprint(f"Effect legend (Future knows): {patterns}", "yellow")
+            cprint(banner + "\n", "green")
+
     # Print the planner
     cprint(f"Successfully constructed the '{config.evaluation.type}' planner!", "green")
     print(eval_runner)
@@ -402,6 +426,8 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
         try:
             info = eval_runner.run_instruction(instruction)
         except Exception as e:
+            # Temporary debug: print full traceback to diagnose failures (manual CLI, etc.)
+            traceback.print_exc()
             print("An error occurred:", e)
 
     else:

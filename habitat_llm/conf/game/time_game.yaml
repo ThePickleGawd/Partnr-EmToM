@@ -31,7 +31,7 @@ world_model:
 
 evaluation:
   type: decentralized
-  do_print: false
+  do_print: true
   agents:
     agent_0:
       planner:
