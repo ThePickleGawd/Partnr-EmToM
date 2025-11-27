@@ -60,6 +60,8 @@ def _ensure_game_config(config):
     """
     if not hasattr(config, "game"):
         config.game = OmegaConf.create({"enable": False})
+    if not hasattr(config.game, "manual_agents"):
+        config.game.manual_agents = []
     return config
 
 
@@ -326,6 +328,8 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 config.evaluation.agents[agent_key].planner = OmegaConf.create(
                     {
                         "_target_": "habitat_llm.planner.manual_planner.ManualPlanner",
+                        "_partial_": True,
+                        "_recursive_": False,
                         "plan_config": {},
                     }
                 )

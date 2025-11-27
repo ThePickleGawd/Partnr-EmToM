@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, Tuple
 
 from habitat_llm.planner.planner import Planner
@@ -17,11 +18,19 @@ class ManualPlanner(Planner):
 
     def _prompt_action(self, agent_uid: int) -> Tuple[str, str, str]:
         available = sorted(list(self.agents[0].tools.keys()))
-        prompt = (
-            f"Agent_{agent_uid} manual action. Available tools: {available}\n"
-            "Enter Tool[arg1, arg2] (or blank for Wait, or 'done' to finish): "
-        )
-        raw = input(prompt).strip()
+        header = f"\n[Manual CLI] Agent_{agent_uid} | Tools: {available}"
+        prompt = f"{header}\nEnter Tool[arg1, arg2] (blank=Wait, 'done'=finish): "
+        while True:
+            try:
+                raw = input(prompt).strip()
+            except EOFError:
+                # If stdin is closed (non-interactive run), keep waiting instead of crashing.
+                time.sleep(1.0)
+                continue
+            except KeyboardInterrupt:
+                self.is_done = True
+                return "Done", "", None
+            break
         if raw.lower() == "done":
             self.is_done = True
             return "Done", "", None
@@ -43,6 +52,18 @@ class ManualPlanner(Planner):
         world_graph: Dict[int, Any],
         verbose: bool = False,
     ):
+        if not hasattr(self, "_printed_world"):
+            # Print the full world graph once for context.
+            try:
+                world_desc = world_graph[self.agents[0].uid].get_world_descr(
+                    is_human_wg=False
+                )
+                print("\n[Manual CLI] Initial world graph:")
+                print(world_desc)
+            except Exception:
+                pass
+            self._printed_world = True
+
         if self.is_done:
             info = {
                 "high_level_actions": {},
