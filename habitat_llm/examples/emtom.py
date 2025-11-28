@@ -368,17 +368,25 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 pass
         if game_orchestrator.state:
             banner = "=" * 60
-            state = game_orchestrator.state
-            target = state.secret_state.get("target_item", "unknown")
-            patterns = state.secret_state.get("patterns", {})
-            target_pattern = state.secret_state.get("target_pattern", [])
             cprint("\n" + banner, "green")
-            cprint("GAME START: Submit the correct target item to win.", "green")
-            cprint(f"Hidden target (Past private): {target}", "yellow")
-            if target_pattern:
-                cprint(f"Target effect pattern (Past private): {target_pattern}", "yellow")
-            if patterns:
-                cprint(f"Effect legend (Future knows): {patterns}", "yellow")
+            cprint("GAME START: Review hidden info and win condition.", "green")
+            # Use game-spec debug summary if available
+            try:
+                summary_lines = game_orchestrator.game_spec.debug_summary(
+                    game_orchestrator.state, game_orchestrator.env
+                )
+            except Exception:
+                summary_lines = []
+            for line in summary_lines or []:
+                cprint(line, "yellow")
+            # Print full world graph for context
+            try:
+                wg = env_interface.full_world_graph
+                world_desc = wg.get_world_descr(is_human_wg=False)
+                cprint("Full world graph:", "cyan")
+                print(world_desc)
+            except Exception:
+                pass
             cprint(banner + "\n", "green")
 
     # Print the planner

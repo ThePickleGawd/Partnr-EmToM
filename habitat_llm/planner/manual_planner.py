@@ -17,7 +17,8 @@ class ManualPlanner(Planner):
         super().__init__(plan_config, env_interface)
 
     def _prompt_action(self, agent_uid: int) -> Tuple[str, str, str]:
-        available = sorted(list(self.agents[0].tools.keys()))
+        agent_obj = next(a for a in self.agents if a.uid == agent_uid)
+        available = sorted(list(agent_obj.tools.keys()))
         header = f"\nAgent_{agent_uid} > Tools: {available}"
         prompt = f"{header}\nAgent_{agent_uid} > "
         while True:
@@ -95,6 +96,7 @@ class ManualPlanner(Planner):
         for agent in self.agents:
             if agent.uid not in responses or not responses[agent.uid]:
                 responses[agent.uid] = "Manual action acknowledged."
+            print(f"Agent_{agent.uid} Response: {responses[agent.uid]}")
 
         info = {
             "high_level_actions": hl_actions,

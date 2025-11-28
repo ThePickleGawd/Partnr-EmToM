@@ -142,6 +142,13 @@ class GameSpec:
         """
         return ""
 
+    def debug_summary(self, state: GameState, env: EnvironmentAdapter) -> list:
+        """
+        Optional game-specific debug summary for humans (e.g., hidden targets).
+        Return a list of strings to be printed at game start.
+        """
+        return []
+
 
 # --- Orchestrator ----------------------------------------------------------
 

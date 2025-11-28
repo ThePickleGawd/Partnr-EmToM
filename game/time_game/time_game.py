@@ -180,6 +180,16 @@ class TimeGameSpec(GameSpec):
             )
         return ""
 
+    def debug_summary(self, state: GameState, env: EnvironmentAdapter) -> list:
+        target = state.secret_state.get("target_item", "unknown")
+        patterns = state.secret_state.get("patterns", {})
+        target_pattern = state.secret_state.get("target_pattern", [])
+        return [
+            f"Hidden target: {target}",
+            f"Target effect pattern: {target_pattern}",
+            f"Effect legend: {patterns}",
+        ]
+
     # --- Tool handlers ----------------------------------------------------
     def _toggle_switch(
         self, agent_id: str, orchestrator, switch_name: str = "", **_: Dict

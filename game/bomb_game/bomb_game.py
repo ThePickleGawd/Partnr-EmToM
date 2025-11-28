@@ -84,15 +84,42 @@ class BombGameSpec(GameSpec):
     ) -> List[ToolDescriptor]:
         tools: List[ToolDescriptor] = []
 
+        # Utility tools for navigation/status
+        tools.append(
+            ToolDescriptor(
+                name="where_am_i",
+                description="Report your current room.",
+                handler=self._where_am_i,
+            )
+        )
+        tools.append(
+            ToolDescriptor(
+                name="move_to_room",
+                description="Teleport/navigate to a named room (use room names from the room list).",
+                parameters={"room_name": "string"},
+                handler=self._move_to_room,
+            )
+        )
+
         # Bomb-specific tool; only appears when in the bomb room and not finished.
         if not state.secret_state.get("defused") and not state.secret_state.get("failed"):
             current_room = env.get_agent_room(agent_id)
-            if current_room and current_room == state.secret_state.get("bomb_room"):
+            bomb_room = state.secret_state.get("bomb_room")
+            if current_room and current_room == bomb_room:
                 tools.append(
                     ToolDescriptor(
                         name="defuse_bomb",
                         description="Cut the correct wire to defuse the bomb (only available in the bomb room).",
                         handler=self._defuse_bomb,
+                    )
+                )
+            else:
+                # Include a disabled stub so manual prompts surface the tool name
+                tools.append(
+                    ToolDescriptor(
+                        name="defuse_bomb",
+                        description=f"Defuse the bomb (only works in {bomb_room}). Move there before calling.",
+                        handler=self._defuse_bomb_stub,
                     )
                 )
 
@@ -151,6 +178,14 @@ class BombGameSpec(GameSpec):
         if role.name == "Guide":
             return f"You know the bomb is in {role.private_info.get('bomb_room')}."
         return ""
+
+    def debug_summary(self, state: GameState, env: EnvironmentAdapter) -> list:
+        bomb_room = state.secret_state.get("bomb_room", "unknown")
+        attempts = state.secret_state.get("defuse_attempts_left", self.max_defuse_attempts)
+        return [
+            f"Bomb room: {bomb_room}",
+            f"Defuse attempts left: {attempts}",
+        ]
 
     # --- Tool handlers ----------------------------------------------------
     def _list_rooms(
@@ -216,6 +251,9 @@ class BombGameSpec(GameSpec):
             "message": "Bomb defused!",
             "image": state.secret_state.get("latest_image_path"),
         }
+
+    def _defuse_bomb_stub(self, agent_id: str, orchestrator: GameOrchestrator, **_: Any) -> Dict[str, Any]:
+        return {"ok": False, "error": "Not in the bomb room yet. Navigate to the correct room and try again."}
 
 
 # --- Bomb-specific rendering utilities (PIL-based to avoid SDL issues) ------
