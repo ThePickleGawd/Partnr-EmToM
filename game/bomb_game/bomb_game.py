@@ -17,8 +17,8 @@ from game.game import (
     GameState,
     ToolDescriptor,
 )
-import os
 from PIL import Image, ImageDraw, ImageFont
+import os
 
 
 class BombGameSpec(GameSpec):
@@ -84,23 +84,6 @@ class BombGameSpec(GameSpec):
     ) -> List[ToolDescriptor]:
         tools: List[ToolDescriptor] = []
 
-        # Utility tools for navigation/status
-        tools.append(
-            ToolDescriptor(
-                name="where_am_i",
-                description="Report your current room.",
-                handler=self._where_am_i,
-            )
-        )
-        tools.append(
-            ToolDescriptor(
-                name="move_to_room",
-                description="Teleport/navigate to a named room (use room names from the room list).",
-                parameters={"room_name": "string"},
-                handler=self._move_to_room,
-            )
-        )
-
         # Bomb-specific tool; only appears when in the bomb room and not finished.
         if not state.secret_state.get("defused") and not state.secret_state.get("failed"):
             current_room = env.get_agent_room(agent_id)
@@ -111,15 +94,6 @@ class BombGameSpec(GameSpec):
                         name="defuse_bomb",
                         description="Cut the correct wire to defuse the bomb (only available in the bomb room).",
                         handler=self._defuse_bomb,
-                    )
-                )
-            else:
-                # Include a disabled stub so manual prompts surface the tool name
-                tools.append(
-                    ToolDescriptor(
-                        name="defuse_bomb",
-                        description=f"Defuse the bomb (only works in {bomb_room}). Move there before calling.",
-                        handler=self._defuse_bomb_stub,
                     )
                 )
 

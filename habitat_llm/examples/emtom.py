@@ -50,7 +50,7 @@ from game.bomb_game import BombGameSpec
 from game.time_game import TimeGameSpec
 from game.habitat_adapter import HabitatEnvironmentAdapter
 from game.game_runner import GameDecentralizedEvaluationRunner
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, open_dict
 
 
 def _ensure_game_config(config):
@@ -60,8 +60,14 @@ def _ensure_game_config(config):
     """
     if not hasattr(config, "game"):
         config.game = OmegaConf.create({"enable": False})
-    if not hasattr(config.game, "manual_agents"):
-        config.game.manual_agents = []
+    defaults = {
+        "manual_agents": [],
+        "manual_obs_popup": False,
+    }
+    with open_dict(config.game):
+        for k, v in defaults.items():
+            if not hasattr(config.game, k):
+                setattr(config.game, k, v)
     return config
 
 
@@ -325,12 +331,21 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
         for aid in manual_agents:
             agent_key = f"agent_{aid}"
             if hasattr(config.evaluation.agents, agent_key):
+                # Preserve any existing LLM config so manual planner can still use it.
+                llm_conf = None
+                try:
+                    llm_conf = config.evaluation.agents[agent_key].planner.plan_config.llm
+                except Exception:
+                    pass
                 config.evaluation.agents[agent_key].planner = OmegaConf.create(
                     {
                         "_target_": "habitat_llm.planner.manual_planner.ManualPlanner",
                         "_partial_": True,
                         "_recursive_": False,
-                        "plan_config": {},
+                        "plan_config": {
+                            "manual_obs_popup": config.game.manual_obs_popup,
+                            "llm": llm_conf,
+                        },
                     }
                 )
 
