@@ -48,11 +48,6 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 tool = GameTool(desc, self.game_orchestrator, agent.uid)
                 agent.tools[tool.name] = tool
                 added.append(desc.name)
-            if added:
-                print(
-                    f"[BombGame] Added game tools for agent {agent.uid}: {added}. "
-                    f"Now available: {sorted(agent.tools.keys())}"
-                )
 
     def _compose_instruction(self, fallback_instruction: str) -> str:
         """

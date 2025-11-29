@@ -18,7 +18,6 @@ game:
   type: time_game
   max_submissions: 2
   decay_strength: 0.35
-  turn_limit: 50
   instruction_prefix: "You are playing a time-separated coordination puzzle. Follow the game rules below."
   instruction_override: "Play the TimeShift switch puzzle. Past must encode the hidden target via switches; Future decodes effects and submits the target item."
 
