@@ -201,15 +201,14 @@ class ManualPlanner(Planner):
                     pass
             import matplotlib.pyplot as plt
 
-            plt.figure(f"Agent_{agent_uid}_action")
-            ax = plt.gca()
+            fig = plt.figure(f"Agent_{agent_uid}_action")
+            ax = fig.gca()
             ax.axis("off")
-            if len(frames) > 1:
-                ax.imshow(frames[-1])
-            else:
-                ax.imshow(frames[0])
-            plt.pause(1.0)
-            plt.close()
+            ax.imshow(frames[-1])
+            fig.canvas.draw()
+            # Block until user closes the window to avoid instant disappearance.
+            plt.show(block=True)
+            plt.close(fig)
         except Exception as exc:
             print(f"[Manual CLI] Popup failed: {exc}")
 

@@ -100,6 +100,7 @@ class LLMPlanner(Planner):
         self.trace: str = ""
         self.curr_obj_states: str = ""
         self.params: Dict[str, Any] = {}
+        self._tool_signature: Optional[Tuple[str, ...]] = None
 
         # Reset agents
         for agent in self._agents:
@@ -629,6 +630,20 @@ class LLMPlanner(Planner):
             }
             return {}, planner_info, self.is_done
 
+        # If tool set changed (e.g., game-specific tools like defuse_bomb), rebuild prompt.
+        current_tools = tuple(
+            sorted({tool_name for agent in self.agents for tool_name in agent.tools})
+        )
+        if self._tool_signature is None:
+            self._tool_signature = current_tools
+        elif current_tools != self._tool_signature:
+            self._tool_signature = current_tools
+            # Force prompt rebuild with updated tool list/descriptions.
+            self.curr_prompt = ""
+            self.trace = ""
+            self.curr_obj_states = ""
+            print(f"[LLMPlanner] Tool set changed; rebuilding prompt. Tools: {current_tools}")
+
         if self.curr_prompt == "":
             # Prepare prompts
             self.curr_prompt, self.params = self.prepare_prompt(
@@ -746,6 +761,19 @@ class LLMPlanner(Planner):
         # have a response indicating success or failure (and the reason)
         self.replan_required = any(responses.values())
         print_str += self._add_responses_to_prompt(responses)
+
+        # Debug: log agent locations and active nav targets for visibility.
+        try:
+            for agent in self.agents:
+                room = self.env_interface.get_agent_room(agent.uid)
+                action_sig = self.last_high_level_actions.get(agent.uid, ("", "", ""))
+                action_name, action_arg, _ = action_sig
+                if action_name == "Navigate":
+                    print(f"[NavDebug] Agent_{agent.uid} room={room} navigating_to={action_arg}")
+                elif action_name:
+                    print(f"[NavDebug] Agent_{agent.uid} room={room} action={action_name}[{action_arg}]")
+        except Exception:
+            pass
 
         combined_responses = dict(message_responses)
         combined_responses.update(responses)
