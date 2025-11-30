@@ -18,6 +18,9 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Union
 
+import imageio
+import numpy as np
+
 import attr
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -600,6 +603,11 @@ class EvaluationRunner:
         planner_info: Dict[str, Any] = {}
         low_level_actions: List[Dict[str, Any]] = []
         should_end = False
+        # FPV bookkeeping
+        self._fpv_frames = {}
+        self._fpv_missing = set()
+        self._fpv_started = set()
+        self._fpv_any = False
 
         # Plan until required
         while not should_end:
@@ -616,17 +624,56 @@ class EvaluationRunner:
                 # Refresh observations
                 observations = self.env_interface.parse_observations(obs)
                 if self.evaluation_runner_config.save_video:
+                    fp_popups = self._save_first_person_popups(
+                        observations, total_step_count
+                    )
+                    popup_images = planner_info.get("popup_images", {}) or {}
+                    if fp_popups:
+                        popup_images = {**popup_images, **fp_popups}
                     # Store third person frames for generating video
                     self.dvu._store_for_video(
                         observations,
                         planner_info.get("high_level_actions", {}),
-                        popup_images=planner_info.get("popup_images", {}),
+                        popup_images=popup_images,
                     )
+                    # Also store first-person frames for a separate per-agent video
+                    self._store_first_person_frames(observations, planner_info.get("high_level_actions", {}))
 
             # Get next low level actions
             low_level_actions, planner_info, should_end = self.get_low_level_actions(
                 self.current_instruction, observations, self.env_interface.world_graph
             )
+            # Fast-forward motor execution: keep stepping while planners are not requesting replans.
+            replan_any = any(planner_info.get("replan_required", {}).values())
+            fast_steps = 0
+            while (
+                not should_end
+                and not replan_any
+                and len(low_level_actions) > 0
+                and fast_steps < 20  # hard cap to avoid runaway loops
+            ):
+                obs, reward, done, info = self.env_interface.step(low_level_actions)
+                observations = self.env_interface.parse_observations(obs)
+                total_step_count += 1
+                if self.evaluation_runner_config.save_video:
+                    fp_popups = self._save_first_person_popups(
+                        observations, total_step_count
+                    )
+                    popup_images = planner_info.get("popup_images", {}) or {}
+                    if fp_popups:
+                        popup_images = {**popup_images, **fp_popups}
+                    self.dvu._store_for_video(
+                        observations,
+                        planner_info.get("high_level_actions", {}),
+                        popup_images=popup_images,
+                    )
+                low_level_actions, planner_info, should_end = self.get_low_level_actions(
+                    self.current_instruction,
+                    observations,
+                    self.env_interface.world_graph,
+                )
+                replan_any = any(planner_info.get("replan_required", {}).values())
+                fast_steps += 1
 
             # We terminate the episode if this loop gets stuck
             curr_env = self.env_interface.env.env.env._env
@@ -718,6 +765,7 @@ class EvaluationRunner:
         # Make video
         if self.evaluation_runner_config.save_video:
             self.dvu._make_video(play=False, postfix=self.episode_filename)
+            self._make_first_person_videos()
 
         # Log planner information per step
         self._log_planner_data(planner_infos)
@@ -730,3 +778,111 @@ class EvaluationRunner:
         info |= planner_info
 
         return info
+
+    def _save_first_person_popups(
+        self, observations: Dict[str, Any], step_idx: int
+    ) -> Dict[int, str]:
+        """
+        Save first-person head_rgb per agent to disk for overlay in videos.
+        Returns a mapping of agent_uid to image path.
+        """
+        paths: Dict[int, str] = {}
+        results_root = getattr(getattr(self.env_interface, "conf", None), "paths", None)
+        out_root = (
+            getattr(results_root, "results_dir", None)
+            if results_root is not None
+            else "outputs"
+        )
+        out_dir = os.path.join(out_root, "manual_obs")
+        os.makedirs(out_dir, exist_ok=True)
+
+        for agent in self.agents.values():
+            try:
+                try:
+                    import torch  # type: ignore
+                except Exception:
+                    torch = None  # type: ignore
+                obs_agent = self.env_interface.filter_obs_space(
+                    observations, agent.uid
+                )
+                # Fallback: look for any head_rgb-like key if exact missing.
+                if "head_rgb" not in obs_agent:
+                    candidate = next(
+                        (
+                            k
+                            for k in obs_agent.keys()
+                            if "head_rgb" in k.lower()
+                        ),
+                        None,
+                    )
+                    if candidate:
+                        obs_agent["head_rgb"] = obs_agent[candidate]
+                if "head_rgb" not in obs_agent:
+                    if agent.uid not in self._fpv_missing:
+                        print(f"[FPV] head_rgb missing for agent_{agent.uid}; keys={list(obs_agent.keys())}")
+                        self._fpv_missing.add(agent.uid)
+                    continue
+                rgb = obs_agent["head_rgb"]
+                if torch is not None and hasattr(rgb, "detach") and isinstance(rgb, torch.Tensor):
+                    rgb_np = rgb.detach().cpu().numpy()
+                else:
+                    rgb_np = np.array(rgb)
+                if rgb_np.ndim == 4 and rgb_np.shape[0] == 1:
+                    rgb_np = rgb_np[0]
+                if rgb_np.ndim == 3 and rgb_np.shape[0] in (3, 4):
+                    rgb_np = np.transpose(rgb_np, (1, 2, 0))
+                if rgb_np.dtype != np.uint8:
+                    rgb_np = np.clip(rgb_np, 0, 255)
+                    if rgb_np.max() <= 1.0:
+                        rgb_np = rgb_np * 255.0
+                    rgb_np = rgb_np.astype(np.uint8)
+                if rgb_np.ndim != 3 or rgb_np.shape[2] < 3:
+                    continue
+                if getattr(self.evaluation_runner_config, "save_fpv_stills", True):
+                    path = os.path.join(out_dir, f"fpv_agent{agent.uid}_step{step_idx}.png")
+                    imageio.imwrite(path, rgb_np[:, :, :3])
+                    paths[agent.uid] = path
+                    if agent.uid not in self._fpv_started:
+                        print(f"[FPV] Capturing FPV for agent_{agent.uid} to {out_dir}")
+                        self._fpv_started.add(agent.uid)
+                self._fpv_frames.setdefault(agent.uid, []).append(rgb_np[:, :, :3])
+                self._fpv_any = True
+            except Exception as exc:
+                print(f"[FPV] Failed to capture for agent_{agent.uid}: {exc}")
+        return paths
+
+    def _make_first_person_videos(self) -> None:
+        """
+        Write per-agent first-person videos from accumulated FPV frames.
+        """
+        frames_store = getattr(self, "_fpv_frames", None)
+        if not frames_store:
+            print("[FPV] No first-person frames captured; check head_rgb sensor availability.")
+            return
+        try:
+            results_root = getattr(
+                getattr(self.env_interface, "conf", None), "paths", None
+            )
+            out_root = (
+                getattr(results_root, "results_dir", None)
+                if results_root is not None
+                else "outputs"
+            )
+            out_dir = os.path.join(out_root, "videos")
+            os.makedirs(out_dir, exist_ok=True)
+            for agent_uid, frames in frames_store.items():
+                if not frames:
+                    continue
+                video_path = os.path.join(
+                    out_dir, f"fpv_agent{agent_uid}_{self.episode_filename}.mp4"
+                )
+                try:
+                    # Match FPV fps to third-person video if available
+                    fps = getattr(self.env_interface.conf.evaluation, "video_fps", 30)
+                    imageio.mimwrite(video_path, frames, fps=fps)
+                    print(f"[FPV] Saved first-person video for agent_{agent_uid} to {video_path} (fps={fps})")
+                except Exception as exc:
+                    print(f"[FPV] Failed to write FPV video for agent_{agent_uid}: {exc}")
+        finally:
+            # Clear frames after writing
+            self._fpv_frames = {}

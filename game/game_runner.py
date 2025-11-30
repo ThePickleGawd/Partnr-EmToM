@@ -144,6 +144,10 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         planner_info: Dict[str, Any] = {}
         low_level_actions: Any = []
         should_end = False
+        # FPV bookkeeping
+        self._fpv_frames = {}
+        self._fpv_missing = set()
+        self._fpv_started = set()
 
         while not should_end:
             if (
@@ -157,10 +161,16 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 obs, reward, done, info = self.env_interface.step(low_level_actions)
                 observations = self.env_interface.parse_observations(obs)
                 if self.evaluation_runner_config.save_video:
+                    fp_popups = self._save_first_person_popups(
+                        observations, total_step_count
+                    )
+                    popup_images = planner_info.get("popup_images", {}) or {}
+                    if fp_popups:
+                        popup_images = {**popup_images, **fp_popups}
                     self.dvu._store_for_video(
                         observations,
                         planner_info.get("high_level_actions", {}),
-                        popup_images=planner_info.get("popup_images", {}),
+                        popup_images=popup_images,
                     )
 
             # Update game state based on latest env situation
@@ -284,6 +294,7 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
 
         if self.evaluation_runner_config.save_video:
             self.dvu._make_video(play=False, postfix=self.episode_filename)
+            self._make_first_person_videos()
 
         self._log_planner_data(planner_infos)
 

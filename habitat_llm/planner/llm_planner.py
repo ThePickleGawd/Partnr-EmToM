@@ -101,6 +101,7 @@ class LLMPlanner(Planner):
         self.curr_obj_states: str = ""
         self.params: Dict[str, Any] = {}
         self._tool_signature: Optional[Tuple[str, ...]] = None
+        self._last_comm_sig: Dict[int, Tuple[str, str]] = {}
 
         # Reset agents
         for agent in self._agents:
@@ -761,6 +762,23 @@ class LLMPlanner(Planner):
         # have a response indicating success or failure (and the reason)
         self.replan_required = any(responses.values())
         print_str += self._add_responses_to_prompt(responses)
+
+        # Suppress repeated CommunicationTool ping-pong from triggering replans.
+        for agent in self.agents:
+            sig = self.last_high_level_actions.get(agent.uid)
+            if not sig or sig[0] != "CommunicationTool":
+                continue
+            resp = responses.get(agent.uid, "")
+            if not resp:
+                continue
+            last_sig = self._last_comm_sig.get(agent.uid)
+            if last_sig == (sig[0], sig[1]):
+                # Same comm as last time; clear response to avoid immediate replan loop.
+                responses[agent.uid] = ""
+            else:
+                self._last_comm_sig[agent.uid] = (sig[0], sig[1])
+        # Recompute replan_required after comm-loop suppression
+        self.replan_required = any(responses.values())
 
         # Debug: log agent locations and active nav targets for visibility.
         try:
