@@ -299,6 +299,21 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                     pass
                 # Avoid logging huge frame blobs downstream.
                 planner_info.pop("manual_video_frames", None)
+            # Manual planner may also pass pre-captured FPV frames; merge them into the recorder.
+            if (
+                self.evaluation_runner_config.save_video
+                and planner_info.get("manual_fpv_frames")
+                and getattr(self, "_fpv_recorder", None) is not None
+                and not getattr(self, "_fpv_recorder_failed", False)
+            ):
+                try:
+                    for agent_name, frames in planner_info.get("manual_fpv_frames", {}).items():
+                        if not isinstance(frames, list):
+                            continue
+                        self._fpv_recorder._frames.setdefault(agent_name, []).extend(frames)
+                except Exception:
+                    pass
+                planner_info.pop("manual_fpv_frames", None)
 
             # Prepare popup images for subsequent video overlay
             if (

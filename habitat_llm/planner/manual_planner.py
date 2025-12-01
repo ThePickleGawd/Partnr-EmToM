@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Tuple, Optional, List
+from typing import Any, Dict, Tuple, Optional, List, DefaultDict
+from collections import defaultdict
 
 import os
 
@@ -24,6 +25,7 @@ class ManualPlanner(Planner):
         self._printed_world = False
         self._last_action_sig: Optional[str] = None
         self._obs_counter: Dict[int, int] = {}
+        self._manual_fpv_keys: Optional[Dict[str, str]] = None
         self.llm = self._hardcode_openai_llm()
 
     def _hardcode_openai_llm(self):
@@ -115,6 +117,7 @@ class ManualPlanner(Planner):
         hl_actions: Dict[int, Tuple[str, str, str]] = {}
         responses: Dict[int, str] = {}
         manual_frames: Dict[int, List[Any]] = {}
+        manual_fpv_frames: Dict[str, List[Any]] = {}
         for agent in self.agents:
             obs_agent = self.filter_obs_space(observations, agent.uid)
             name, args, err = self._prompt_action(agent.uid)
@@ -130,7 +133,7 @@ class ManualPlanner(Planner):
                 )
                 responses.update(resp)
             else:
-                resp, frames = self._run_skill_with_empty_allowed(
+                resp, frames, fpv_frames = self._run_skill_with_empty_allowed(
                     {agent.uid: hl_actions[agent.uid]}
                 )
                 responses.update(resp)
@@ -138,6 +141,9 @@ class ManualPlanner(Planner):
                     # keep frames for both per-action save and downstream cumulative video
                     manual_frames.setdefault(agent.uid, []).extend(frames)
                     self._save_media(frames, agent_uid=agent.uid)
+                if fpv_frames:
+                    for agent_name, f_list in fpv_frames.items():
+                        manual_fpv_frames.setdefault(agent_name, []).extend(f_list)
                 final_obs = self.env_interface.get_observations()
                 final_obs_agent = self.filter_obs_space(final_obs, agent.uid)
                 self._popup_media(
@@ -183,6 +189,8 @@ class ManualPlanner(Planner):
         if manual_frames:
             # Pass collected frames to the evaluation runner so it can build a cumulative video.
             info["manual_video_frames"] = manual_frames
+        if manual_fpv_frames:
+            info["manual_fpv_frames"] = manual_fpv_frames
         return low_level_actions, info, self.is_done
 
     def reset(self) -> None:
@@ -230,6 +238,8 @@ class ManualPlanner(Planner):
             unique_postfix=True,
         )
         observations = self.env_interface.get_observations()
+        fpv_frames: DefaultDict[str, List[Any]] = defaultdict(list)
+        self._capture_fpv_frames(observations, fpv_frames)
         agent_idx = list(hl_actions.keys())[0]
         action_name = hl_actions[agent_idx][0].lower()
         skill_steps = 0
@@ -246,7 +256,7 @@ class ManualPlanner(Planner):
             if make_video:
                 dvu._store_for_video(observations, hl_actions)
                 dvu._make_video(play=False)
-            return responses, dvu.frames
+            return responses, dvu.frames, fpv_frames
 
         while True:
             low_level_actions, responses = self.process_high_level_actions(
@@ -261,6 +271,7 @@ class ManualPlanner(Planner):
                     break
             obs, reward, done, info = self.env_interface.step(low_level_actions)
             observations = self.env_interface.parse_observations(obs)
+            self._capture_fpv_frames(observations, fpv_frames)
             if make_video:
                 dvu._store_for_video(observations, hl_actions)
             skill_steps += 1
@@ -271,7 +282,7 @@ class ManualPlanner(Planner):
                 break
         if make_video and dvu.frames:
             dvu._make_video(play=False)
-        return responses, dvu.frames
+        return responses, dvu.frames, fpv_frames
 
     def _save_media(self, frames, agent_uid: int) -> None:
         """
@@ -377,3 +388,41 @@ class ManualPlanner(Planner):
                 a = a * 255.0
             a = a.astype(np.uint8)
         return a
+
+    # --- First-person capture helpers ---------------------------------
+    def _get_fpv_keys(self) -> Dict[str, str]:
+        """
+        Build observation keys for FPV capture based on trajectory config.
+        """
+        if self._manual_fpv_keys is not None:
+            return self._manual_fpv_keys
+        traj_conf = getattr(self.env_interface.conf, "trajectory", None)
+        agent_names = list(getattr(traj_conf, "agent_names", [])) if traj_conf else []
+        cam_prefixes = list(getattr(traj_conf, "camera_prefixes", [])) if traj_conf else []
+        if not agent_names or len(agent_names) != len(cam_prefixes):
+            self._manual_fpv_keys = {}
+            return self._manual_fpv_keys
+        keys: Dict[str, str] = {}
+        for agent_name, cam_prefix in zip(agent_names, cam_prefixes):
+            if getattr(self.env_interface, "_single_agent_mode", False):
+                keys[agent_name] = f"{cam_prefix}_rgb"
+            else:
+                keys[agent_name] = f"{agent_name}_{cam_prefix}_rgb"
+        self._manual_fpv_keys = keys
+        return self._manual_fpv_keys
+
+    def _capture_fpv_frames(
+        self, observations: Dict[str, Any], fpv_frames: DefaultDict[str, List[Any]]
+    ) -> None:
+        """
+        Collect first-person frames for the configured cameras into fpv_frames.
+        """
+        keys = self._get_fpv_keys()
+        if not keys:
+            return
+        for agent_name, obs_key in keys.items():
+            if obs_key not in observations:
+                continue
+            frame = self._ensure_hwc(self._to_np(observations[obs_key]))
+            if frame is not None:
+                fpv_frames[agent_name].append(frame)
