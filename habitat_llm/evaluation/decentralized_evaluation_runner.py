@@ -90,7 +90,7 @@ class DecentralizedEvaluationRunner(EvaluationRunner):
 
     def get_low_level_actions(
         self,
-        instruction: str,
+        instruction: Any,
         observations: Dict[str, Any],
         world_graph: Dict[int, "WorldGraph"],
     ) -> Tuple[Dict[int, Any], Dict[str, Any], bool]:
@@ -120,12 +120,27 @@ class DecentralizedEvaluationRunner(EvaluationRunner):
         assert isinstance(self.planner, dict)
         # Loop through all available planners
         for planner in self.planner.values():
+            # If per-agent instructions are provided, pick the one that matches this planner's agent
+            inst_to_use = instruction
+            if isinstance(instruction, dict):
+                inst_to_use = None
+                try:
+                    # planners typically manage a single agent in decentralized mode
+                    agent_uid = planner.agent_indices[0]
+                    inst_to_use = instruction.get(agent_uid, instruction.get(str(agent_uid)))
+                except Exception:
+                    inst_to_use = None
+                if inst_to_use is None and len(instruction) > 0:
+                    # fallback to any instruction to avoid crashing; better than str(dict)
+                    inst_to_use = next(iter(instruction.values()))
+            if inst_to_use is None:
+                inst_to_use = str(instruction)
             # Get next action for this planner
             (
                 this_planner_low_level_actions,
                 this_planner_info,
                 this_planner_is_done,
-            ) = planner.get_next_action(instruction, observations, world_graph)
+            ) = planner.get_next_action(inst_to_use, observations, world_graph)
             # Update the output dictionary with planned low level actions
             low_level_actions.update(this_planner_low_level_actions)
 

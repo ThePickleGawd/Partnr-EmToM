@@ -9,6 +9,8 @@ import copy
 import time
 from typing import Any, Dict, Optional
 
+from habitat.sims.habitat_simulator.sim_utilities import get_obj_from_id
+
 from habitat_llm.evaluation.decentralized_evaluation_runner import (
     DecentralizedEvaluationRunner,
 )
@@ -49,9 +51,10 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 agent.tools[tool.name] = tool
                 added.append(desc.name)
 
-    def _compose_instruction(self, fallback_instruction: str) -> str:
+    def _compose_instruction(self, fallback_instruction: str, agent_uid: int) -> str:
         """
-        Merge game public context and role info with the base task instruction.
+        Merge game public context and role info with the base task instruction for a specific agent.
+        Only includes that agent's private info.
         """
         if not self.game_orchestrator or not self.game_orchestrator.state:
             return fallback_instruction
@@ -62,20 +65,23 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             [f"{aid}:{role.name}" for aid, role in state.agent_roles.items()]
         )
 
-        # Add per-agent private info and allowed tools (if specified in the game config).
-        per_agent_blocks = []
-        allowed_tools = getattr(self.game_orchestrator.game_spec, "allowed_tools", None)
-        for aid, role in state.agent_roles.items():
-            private = self.game_orchestrator.game_spec.render_private_context(aid, state)
-            tool_line = (
-                f"Allowed tools: {sorted(list(allowed_tools))}"
-                if allowed_tools
-                else "Use the provided game tools."
+        # Per-agent private info and allowed tools
+        role = state.agent_roles.get(str(agent_uid)) or state.agent_roles.get(agent_uid)
+        private = ""
+        if role:
+            private = self.game_orchestrator.game_spec.render_private_context(
+                str(agent_uid), state
             )
-            block = f"Agent {aid} ({role.name}): {private if private else 'No private info.'} {tool_line}"
-            per_agent_blocks.append(block)
-
-        per_agent_text = "\n".join(per_agent_blocks)
+        allowed_tools = getattr(self.game_orchestrator.game_spec, "allowed_tools", None)
+        tool_line = (
+            f"Allowed tools: {sorted(list(allowed_tools))}"
+            if allowed_tools
+            else "Use the provided game tools."
+        )
+        per_agent_text = (
+            f"Agent {agent_uid} ({role.name if role else ''}): "
+            f"{private if private else 'No private info.'} {tool_line}"
+        )
 
         image_note = ""
         if state.secret_state.get("latest_image_path"):
@@ -96,6 +102,74 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         )
         self.game_orchestrator.state.terminal = terminal
         self.game_orchestrator.state.outcome = outcome
+
+    def _sync_held_objects(self, observations: Dict[str, Any]) -> None:
+        """
+        Record currently held objects per agent into game state (if available) so game tools can enforce pick requirements.
+        """
+        if not self.game_orchestrator or not self.game_orchestrator.state:
+            return
+        held_map: Dict[str, Any] = {}
+        for agent in self.agents.values():
+            key = f"agent_{agent.uid}_is_holding"
+            raw = observations.get(key, None)
+            grasp_handle = None
+            grasp_idx = None
+            grasp_state = None
+            grasp_name = None
+            try:
+                gm = self.env_interface.sim.agents_mgr[agent.uid].grasp_mgr
+                grasp_state = getattr(gm, "is_grasped", None)
+                grasp_idx = getattr(gm, "snap_idx", None)
+                if grasp_idx is not None:
+                    obj = get_obj_from_id(self.env_interface.sim, int(grasp_idx))
+                    if obj is not None and hasattr(obj, "handle"):
+                        grasp_handle = obj.handle
+                        # Translate to WG name if possible for human-readable comparisons
+                        try:
+                            wg = getattr(self.env_interface, "full_world_graph", None)
+                            if wg is not None and wg.has_node_with_sim_handle(grasp_handle):
+                                grasp_name = wg.get_node_from_sim_handle(grasp_handle).name
+                        except Exception:
+                            grasp_name = None
+            except Exception as exc:
+                grasp_state = f"grasp_mgr_err:{exc}"
+            held_obj = None
+            # Normalize observed value
+            if raw is not None:
+                try:
+                    if hasattr(raw, "item"):
+                        raw = raw.item()
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8")
+                except Exception:
+                    pass
+                if isinstance(raw, str) and raw != "":
+                    held_obj = raw
+                elif isinstance(raw, (int, float)) or raw is True:
+                    if grasp_name is not None:
+                        held_obj = grasp_name
+                    elif grasp_handle is not None:
+                        held_obj = grasp_handle
+                else:
+                    if grasp_name is not None:
+                        held_obj = grasp_name
+                    elif grasp_handle is not None:
+                        held_obj = grasp_handle
+            else:
+                if grasp_name is not None:
+                    held_obj = grasp_name
+                elif grasp_handle is not None:
+                    held_obj = grasp_handle
+
+            print(
+                f"[GameRunner] held sync agent_{agent.uid}: raw={raw} grasp_state={grasp_state} grasp_idx={grasp_idx} grasp_handle={grasp_handle} grasp_name={grasp_name} chosen={held_obj}"
+            )
+            if held_obj is not None:
+                held_map[str(agent.uid)] = held_obj
+        if held_map:
+            print(f"[GameRunner] held_objects sync map: {held_map}")
+            self.game_orchestrator.state.secret_state["held_objects"] = held_map
 
     def run_instruction(
         self, instruction: Optional[str] = None, output_name: str = ""
@@ -126,14 +200,19 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 tool_names = sorted(list(agent.tools.keys()))
                 print(f"Agent {agent.uid}: {tool_names}")
 
-        composed_instruction = self._compose_instruction(base_instruction)
-
         # Rest of loop follows EvaluationRunner.run_instruction
         t_0 = time.time()
         total_step_count = 1
         self.reset_planners()
-        self.initialize_instruction_metadata(composed_instruction, output_name)
+        # Per-agent instructions
+        for agent in self.agents.values():
+            agent.composed_instruction = self._compose_instruction(
+                base_instruction, agent.uid
+            )
+        self.initialize_instruction_metadata(base_instruction, output_name)
         observations = self.env_interface.get_observations()
+        # Sync held objects at episode start
+        self._sync_held_objects(observations)
         info = {
             "task_percent_complete": 0.0,
             "task_state_success": 0.0,
@@ -160,6 +239,7 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             if len(low_level_actions) > 0:
                 obs, reward, done, info = self.env_interface.step(low_level_actions)
                 observations = self.env_interface.parse_observations(obs)
+                self._sync_held_objects(observations)
                 if self.evaluation_runner_config.save_video:
                     fp_popups = self._save_first_person_popups(
                         observations, total_step_count
@@ -192,8 +272,13 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             self._inject_game_tools()
 
             # Get next low level actions
+            # Use agent-specific instructions where possible
+            agent_instructions = {
+                agent.uid: getattr(agent, "composed_instruction", base_instruction)
+                for agent in self.agents.values()
+            }
             low_level_actions, planner_info, should_end = self.get_low_level_actions(
-                composed_instruction, observations, self.env_interface.world_graph
+                agent_instructions, observations, self.env_interface.world_graph
             )
 
             # Prepare popup images for subsequent video overlay

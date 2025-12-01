@@ -11,7 +11,7 @@ Two Spot robots play a time-separated secret-code puzzle. Agent_0 (Writer) recei
 ## Tools
 - Base tools (via game agent configs): `Navigate`, `Explore`, `Wait`, `CommunicationTool`, `FindRoomTool`, `FindObjectTool`, `FindReceptacleTool`, `FindAgentActionTool`.
 - Game tools (runtime):
-  - `write_secret_code` (Writer): write code on an object; rusted objects destroy it; stolen objects become invisible to Seeker. Writer must pick up the object before writing.
+  - `write_secret_code` (Writer): write code on an object; rusted objects destroy it; stolen objects become invisible to Seeker. Writer must pick up the object before writing and then place it back so the Seeker can find/read it.
   - `read_secret_code` (Seeker): read code from the inscribed object; fails if rusted/stolen/wrong object.
   - `submit_secret_code` (Seeker): submit the 5-digit code; limited attempts (default 3).
 

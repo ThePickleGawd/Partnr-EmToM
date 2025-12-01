@@ -13,6 +13,8 @@ import random
 import string
 from typing import Dict, List, Optional, Tuple
 
+from habitat.sims.habitat_simulator.sim_utilities import get_obj_from_id
+
 from game.game import AgentRole, EnvironmentAdapter, GameSpec, GameState, ToolDescriptor
 
 
@@ -102,7 +104,10 @@ class TimeGameSpec(GameSpec):
             tools.append(
                 ToolDescriptor(
                     name="write_secret_code",
-                    description="Write your secret 5-digit code on an object you are holding. Include the code for clarity. Example: write_secret_code[kettle_3, 42742]",
+                    description=(
+                        "Write your secret 5-digit code on an object you are holding, then place it so the Seeker can read it. "
+                        "Include the code explicitly. Example: write_secret_code[kettle_3, 42742]"
+                    ),
                     parameters={"object_name": "string", "code": "string"},
                     handler=self._write_secret_code,
                 )
@@ -152,7 +157,8 @@ class TimeGameSpec(GameSpec):
             objs = role.private_info.get("objects", [])
             return (
                 f"You are the Writer. Secret code: {code}. "
-                f"Objects available: {objs}. Write the code on one object using write_secret_code."
+                f"Objects available: {objs}. Pick up one object, use write_secret_code to inscribe the code, "
+                "then place it back down (and tell the Seeker where)."
             )
         if role.name == "Seeker":
             visible = state.public_info.get("visible_objects", [])
@@ -181,7 +187,91 @@ class TimeGameSpec(GameSpec):
         objs = state.secret_state.get("objects", [])
         if object_name not in objs:
             return {"ok": False, "error": f"Unknown object '{object_name}'. Valid: {objs}"}
-        # Pick/Place can be long-running; do not hard-fail if held state is missing.
+        # Require that the writer is actually holding the object.
+        held = set()
+        # Prefer held objects in game state
+        held_map = {}
+        game_state = getattr(orchestrator, "state", None)
+        if game_state and hasattr(game_state, "secret_state"):
+            hm = game_state.secret_state.get("held_objects", {})
+            if isinstance(hm, dict):
+                held_map.update(hm)
+        # Also look at the underlying env_interface game_state if present
+        try:
+            adapter = getattr(orchestrator, "env", None)
+            env_iface = getattr(adapter, "env", None)
+            gm = getattr(env_iface, "game_state", {})
+            if isinstance(gm, dict) and "held_objects" in gm and isinstance(
+                gm["held_objects"], dict
+            ):
+                held_map.update(gm["held_objects"])
+            # Query the simulator directly for ground truth grasped handles (covers manual planner stepping internally)
+            env_if = getattr(getattr(orchestrator, "env", None), "env", None)
+            sim = getattr(env_if, "sim", None)
+            wg = getattr(env_if, "full_world_graph", None)
+            if sim is not None and hasattr(sim, "agents_mgr"):
+                for agent_name in getattr(sim.agents_mgr, "agent_names", []):
+                    try:
+                        agent_uid = int(agent_name.split("_")[1])
+                    except Exception:
+                        agent_uid = 0
+                    try:
+                        gmgr = sim.agents_mgr[agent_uid].grasp_mgr
+                        grasped = getattr(gmgr, "is_grasped", False)
+                        snap_idx = getattr(gmgr, "snap_idx", None)
+                        handle = None
+                        resolved_name = None
+                        if grasped and snap_idx is not None:
+                            obj = get_obj_from_id(sim, int(snap_idx))
+                            handle = getattr(obj, "handle", None)
+                            try:
+                                if wg is not None and wg.has_node_with_sim_handle(handle):
+                                    resolved_name = wg.get_node_from_sim_handle(handle).name
+                            except Exception:
+                                resolved_name = None
+                        print(
+                            f"[TimeGame] grasp probe agent={agent_uid} is_grasped={grasped} snap_idx={snap_idx} handle={handle} name={resolved_name}"
+                        )
+                        chosen = resolved_name or handle
+                        if chosen:
+                            held_map[str(agent_uid)] = chosen
+                    except Exception as exc:
+                        print(f"[TimeGame] grasp probe error agent={agent_name}: {exc}")
+        except Exception as exc:
+            print(f"[TimeGame] grasp probe outer error: {exc}")
+        except Exception:
+            pass
+        print(f"[TimeGame] held_map={held_map}")
+        if game_state and hasattr(game_state, "secret_state"):
+            game_state.secret_state["held_objects"] = held_map
+        held_val = held_map.get(agent_id) or held_map.get(str(agent_id))
+        if held_val:
+            if isinstance(held_val, list):
+                held = set(held_val)
+            else:
+                held = {held_val}
+        # Normalize held entries to names if they are sim handles
+        try:
+            env_if = getattr(getattr(orchestrator, "env", None), "env", None)
+            wg = getattr(env_if, "full_world_graph", None)
+            if wg is not None:
+                normalized = set()
+                for h in held:
+                    if wg.has_node_with_sim_handle(h):
+                        try:
+                            normalized.add(wg.get_node_from_sim_handle(h).name)
+                            continue
+                        except Exception:
+                            pass
+                    normalized.add(h)
+                held = normalized
+        except Exception:
+            pass
+        if object_name not in held:
+            return {
+                "ok": False,
+                "error": f"You must pick up {object_name} before writing the code on it. Held_map={held_map}",
+            }
         if not code:
             code = state.secret_state.get("secret_code", "")
         state.secret_state["code_written"] = True

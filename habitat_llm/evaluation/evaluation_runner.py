@@ -307,7 +307,8 @@ class EvaluationRunner:
             # Save prompts
             # Contains special tokens and few shot examples
             # -----------------------------------------------
-            if "prompts" in planner_infos[-1]:
+            prompts_map = planner_infos[-1].get("prompts", {})
+            if prompts_map and agent.uid in prompts_map:
                 file_path_prompts = os.path.join(
                     self.output_dir,
                     "prompts",
@@ -318,13 +319,14 @@ class EvaluationRunner:
                 os.makedirs(os.path.dirname(file_path_prompts), exist_ok=True)
 
                 with open(file_path_prompts, "w") as file:
-                    file.write(planner_infos[-1]["prompts"][agent.uid])
+                    file.write(prompts_map[agent.uid])
 
             # -----------------------------------------------
             # Save traces
             # Skips special tokens and few shot examples
             # -----------------------------------------------
-            if "traces" in planner_infos[-1]:
+            traces_map = planner_infos[-1].get("traces", {})
+            if traces_map and agent.uid in traces_map:
                 file_path_traces = os.path.join(
                     self.output_dir,
                     "traces",
@@ -335,7 +337,7 @@ class EvaluationRunner:
                 os.makedirs(os.path.dirname(file_path_traces), exist_ok=True)
 
                 with open(file_path_traces, "w") as file:
-                    file.write(planner_infos[-1]["traces"][agent.uid])
+                    file.write(traces_map[agent.uid])
 
         # Log other info from planner
         file_path_json = os.path.join(
@@ -926,6 +928,31 @@ class EvaluationRunner:
         """
         if self._fpv_recorder_failed or self._fpv_recorder is None:
             return
+        # Track held objects per agent for game logic (e.g., gating write/read code).
+        try:
+            held_map = {}
+            for agent in self.agents.values():
+                key = f"agent_{agent.uid}_is_holding"
+                if key in observations:
+                    held_obj = observations[key]
+                    if held_obj is None:
+                        continue
+                    # Normalize to string if possible
+                    try:
+                        if hasattr(held_obj, "item"):
+                            held_obj = held_obj.item()
+                        if isinstance(held_obj, bytes):
+                            held_obj = held_obj.decode("utf-8")
+                    except Exception:
+                        pass
+                    if held_obj != "":
+                        held_map[str(agent.uid)] = held_obj
+            if held_map:
+                if not hasattr(self.env_interface, "game_state"):
+                    self.env_interface.game_state = {}
+                self.env_interface.game_state["held_objects"] = held_map
+        except Exception:
+            pass
         try:
             self._fpv_recorder.record_step(observations)
         except Exception as exc:

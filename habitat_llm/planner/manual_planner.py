@@ -271,8 +271,8 @@ class ManualPlanner(Planner):
         os.makedirs(out_dir, exist_ok=True)
         video_path = os.path.join(out_dir, f"agent_{agent_uid}_action.mp4")
         try:
-            imageio.mimwrite(video_path, frames, fps=5)
-            print(f"Agent_{agent_uid} video saved to {video_path}")
+            imageio.mimwrite(video_path, frames, fps=30)
+            print(f"Agent_{agent_uid} video saved to {video_path} (fps=30)")
         except Exception as exc:
             print(f"[Manual CLI] Failed to write video: {exc}")
 
