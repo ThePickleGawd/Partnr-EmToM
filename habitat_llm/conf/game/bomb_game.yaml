@@ -20,7 +20,6 @@ game:
   auto_defuse_on_enter: false
   instruction_prefix: "You are playing a bomb-defusal game. Follow the game rules below."
   instruction_override: "Play the bomb defusal game. Coordinate to find and defuse the bomb."
-  teleport_moves: true
 
 # Task/env tweaks for the bomb game
 instruction: "${game.instruction_override}"

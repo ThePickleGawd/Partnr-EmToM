@@ -224,6 +224,14 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         self._fpv_missing = set()
         self._fpv_started = set()
 
+        # Capture an initial frame so FPV videos are not empty if no actions execute
+        if self.evaluation_runner_config.save_video:
+            try:
+                self.dvu._store_for_video(observations, {}, popup_images={})
+                self._store_first_person_frames(observations)
+            except Exception:
+                pass
+
         while not should_end:
             if (
                 "print" in planner_info

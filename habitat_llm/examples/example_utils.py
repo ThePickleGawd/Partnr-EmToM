@@ -24,7 +24,7 @@ class DebugVideoUtil:
     """
 
     def __init__(
-        self, env_interface_arg: EnvironmentInterface, output_dir: str
+        self, env_interface_arg: EnvironmentInterface, output_dir: str, unique_postfix: bool = False
     ) -> None:
         """
         Construct the DebugVideoUtil instance from an EnvironmentInterface.
@@ -39,6 +39,7 @@ class DebugVideoUtil:
         self.frames: List[Any] = []
 
         self.output_dir = output_dir
+        self.unique_postfix = unique_postfix
 
         self.num_agents = 0
         for _agent_conf in self.env_interface.conf.evaluation.agents.values():
@@ -103,7 +104,7 @@ class DebugVideoUtil:
                 2,
             )
 
-        # Overlay popups if provided (per agent, left/right).
+        # Overlay popups if provided (per agent, left/right). Align with eval runner style.
         if popup_images:
             # we assume two agents max for overlay placement
             for agent_idx, path in popup_images.items():
@@ -140,7 +141,10 @@ class DebugVideoUtil:
         :param play: Whether or not to play the video immediately.
         :param postfix: An optional postfix for the video file name.
         """
-        out_file = f"{self.output_dir}/videos/video-{postfix}.mp4"
+        extra = f"-{postfix}" if postfix else ""
+        if self.unique_postfix:
+            extra = f"{extra}-{int(time.time()*1000)}"
+        out_file = f"{self.output_dir}/videos/video{extra}.mp4"
         print(f"Saving video to {out_file}")
         os.makedirs(f"{self.output_dir}/videos", exist_ok=True)
         writer = imageio.get_writer(out_file, fps=30, quality=4)

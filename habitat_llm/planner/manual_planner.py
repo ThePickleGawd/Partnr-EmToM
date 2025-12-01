@@ -217,12 +217,23 @@ class ManualPlanner(Planner):
         Run a motor skill to completion, tolerating empty low-level actions if a response is returned.
         This mirrors execute_skill but allows immediate-completion tools (e.g., defuse_bomb).
         """
-        dvu = DebugVideoUtil(self.env_interface, self.env_interface.conf.paths.results_dir)
+        # Use a fresh DebugVideoUtil per action to avoid overwriting the same video file.
+        dvu = DebugVideoUtil(
+            self.env_interface,
+            self.env_interface.conf.paths.results_dir,
+            unique_postfix=True,
+        )
         observations = self.env_interface.get_observations()
         agent_idx = list(hl_actions.keys())[0]
         action_name = hl_actions[agent_idx][0].lower()
         skill_steps = 0
         max_skill_steps = 1500
+        # Capture the initial frame so short/empty runs still yield a video
+        if make_video:
+            try:
+                dvu._store_for_video(observations, hl_actions)
+            except Exception:
+                pass
         # Fast path for Wait: do a single iteration and return
         if action_name == "wait":
             responses = {agent_idx: "Wait completed."}
@@ -252,7 +263,7 @@ class ManualPlanner(Planner):
             if skill_steps >= max_skill_steps:
                 responses = {agent_idx: "Skill timed out."}
                 break
-        if make_video and skill_steps > 0:
+        if make_video and dvu.frames:
             dvu._make_video(play=False)
         return responses, dvu.frames
 

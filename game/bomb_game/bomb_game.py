@@ -89,15 +89,6 @@ class BombGameSpec(GameSpec):
             current_room = env.get_agent_room(agent_id)
             bomb_room = state.secret_state.get("bomb_room")
             if current_room and current_room == bomb_room:
-                # Canonical tool name
-                tools.append(
-                    ToolDescriptor(
-                        name="DefuseBomb",
-                        description="Cut the correct wire to defuse the bomb (only available in the bomb room). Example: DefuseBomb[]",
-                        handler=self._defuse_bomb,
-                    )
-                )
-                # Alias for LLM prompts expecting *Tool suffix
                 tools.append(
                     ToolDescriptor(
                         name="DefuseBombTool",

@@ -302,6 +302,21 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
             if config.evaluation.log_data:
                 save_exception_message(config, env_interface)
 
+        # Print initial world graph for emtom runs (similar to skill_runner)
+        try:
+            from habitat_llm.utils.world_graph import (
+                print_all_entities,
+                print_furniture_entity_handles,
+                print_object_entity_handles,
+            )
+
+            print("\n[EMTOM] Initial world graph entities:")
+            print_all_entities(env_interface.perception.gt_graph)
+            print_furniture_entity_handles(env_interface.perception.gt_graph)
+            print_object_entity_handles(env_interface.perception.gt_graph)
+        except Exception as exc:
+            print(f"[EMTOM] Failed to print initial world graph: {exc}")
+
         # Optional game layer
         if hasattr(config, "game") and config.game.enable:
             adapter = HabitatEnvironmentAdapter(env_interface)
