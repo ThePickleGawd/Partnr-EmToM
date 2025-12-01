@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Tuple, Optional, List
 
 import os
 
@@ -114,6 +114,7 @@ class ManualPlanner(Planner):
 
         hl_actions: Dict[int, Tuple[str, str, str]] = {}
         responses: Dict[int, str] = {}
+        manual_frames: Dict[int, List[Any]] = {}
         for agent in self.agents:
             obs_agent = self.filter_obs_space(observations, agent.uid)
             name, args, err = self._prompt_action(agent.uid)
@@ -134,6 +135,8 @@ class ManualPlanner(Planner):
                 )
                 responses.update(resp)
                 if frames:
+                    # keep frames for both per-action save and downstream cumulative video
+                    manual_frames.setdefault(agent.uid, []).extend(frames)
                     self._save_media(frames, agent_uid=agent.uid)
                 final_obs = self.env_interface.get_observations()
                 final_obs_agent = self.filter_obs_space(final_obs, agent.uid)
@@ -177,6 +180,9 @@ class ManualPlanner(Planner):
             "replan_required": {agent.uid: False for agent in self.agents},
             "is_done": {agent.uid: self.is_done for agent in self.agents},
         }
+        if manual_frames:
+            # Pass collected frames to the evaluation runner so it can build a cumulative video.
+            info["manual_video_frames"] = manual_frames
         return low_level_actions, info, self.is_done
 
     def reset(self) -> None:

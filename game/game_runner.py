@@ -285,6 +285,21 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 agent_instructions, observations, self.env_interface.world_graph
             )
 
+            # If manual planners returned prebuilt frames (they execute skills internally),
+            # stash them so the main runner still produces a cumulative video.
+            if (
+                self.evaluation_runner_config.save_video
+                and planner_info.get("manual_video_frames")
+            ):
+                try:
+                    for frames in planner_info.get("manual_video_frames", {}).values():
+                        if isinstance(frames, list):
+                            self.dvu.frames.extend(frames)
+                except Exception:
+                    pass
+                # Avoid logging huge frame blobs downstream.
+                planner_info.pop("manual_video_frames", None)
+
             # Prepare popup images for subsequent video overlay
             if (
                 self.game_orchestrator
@@ -397,6 +412,6 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             # Emit a summary line on completion.
             if self.game_orchestrator.state.terminal:
                 print(
-                    f"[BombGame] Final outcome: {self.game_orchestrator.state.outcome}"
+                    f"[Game] Final outcome: {self.game_orchestrator.state.outcome}"
                 )
         return info
