@@ -93,7 +93,7 @@ class BombGameSpec(GameSpec):
                 tools.append(
                     ToolDescriptor(
                         name="DefuseBomb",
-                        description="Cut the correct wire to defuse the bomb (only available in the bomb room).",
+                        description="Cut the correct wire to defuse the bomb (only available in the bomb room). Example: DefuseBomb[]",
                         handler=self._defuse_bomb,
                     )
                 )
@@ -101,7 +101,7 @@ class BombGameSpec(GameSpec):
                 tools.append(
                     ToolDescriptor(
                         name="DefuseBombTool",
-                        description="Alias of DefuseBomb; defuse the bomb when you are in the bomb room.",
+                        description="Alias of DefuseBomb; defuse the bomb when you are in the bomb room. Example: DefuseBombTool[]",
                         handler=self._defuse_bomb,
                     )
                 )

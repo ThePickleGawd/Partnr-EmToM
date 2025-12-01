@@ -102,8 +102,8 @@ class TimeGameSpec(GameSpec):
             tools.append(
                 ToolDescriptor(
                     name="write_secret_code",
-                    description="Write your secret 5-digit code on an object you are holding.",
-                    parameters={"object_name": "string"},
+                    description="Write your secret 5-digit code on an object you are holding. Include the code for clarity. Example: write_secret_code[kettle_3, 42742]",
+                    parameters={"object_name": "string", "code": "string"},
                     handler=self._write_secret_code,
                 )
             )
@@ -111,7 +111,7 @@ class TimeGameSpec(GameSpec):
             tools.append(
                 ToolDescriptor(
                     name="read_secret_code",
-                    description="Read the code written on the specified object (must have picked it up first).",
+                    description="Read the code written on the specified object (must have picked it up first). Example: read_secret_code[kettle_3]",
                     parameters={"object_name": "string"},
                     handler=self._read_secret_code,
                 )
@@ -119,7 +119,7 @@ class TimeGameSpec(GameSpec):
             tools.append(
                 ToolDescriptor(
                     name="submit_secret_code",
-                    description="Submit the 5-digit code. You have limited attempts.",
+                    description="Submit the 5-digit code. You have limited attempts. Example: submit_secret_code[12345]",
                     parameters={"code": "string"},
                     handler=self._submit_secret_code,
                 )
@@ -171,7 +171,7 @@ class TimeGameSpec(GameSpec):
 
     # --- Tool handlers ----------------------------------------------------
     def _write_secret_code(
-        self, agent_id: str, orchestrator, object_name: str = "", **_: Dict
+        self, agent_id: str, orchestrator, object_name: str = "", code: str = "", **_: Dict
     ) -> Dict[str, any]:
         state = orchestrator.state
         if state.secret_state.get("code_written"):
@@ -181,8 +181,12 @@ class TimeGameSpec(GameSpec):
         objs = state.secret_state.get("objects", [])
         if object_name not in objs:
             return {"ok": False, "error": f"Unknown object '{object_name}'. Valid: {objs}"}
+        # Pick/Place can be long-running; do not hard-fail if held state is missing.
+        if not code:
+            code = state.secret_state.get("secret_code", "")
         state.secret_state["code_written"] = True
         state.secret_state["code_location"] = object_name
+        state.secret_state["inscribed_code"] = code
         if object_name in state.secret_state.get("rusted", set()):
             state.secret_state["code_destroyed"] = True
             return {
@@ -200,7 +204,7 @@ class TimeGameSpec(GameSpec):
                     "Seeker will not be able to find it."
                 ),
             }
-        return {"ok": True, "message": f"Wrote the code on {object_name}."}
+        return {"ok": True, "message": f"Wrote the code '{code}' on {object_name}."}
 
     def _read_secret_code(
         self, agent_id: str, orchestrator, object_name: str = "", **_: Dict
@@ -217,7 +221,7 @@ class TimeGameSpec(GameSpec):
         if state.secret_state.get("code_destroyed"):
             return {"ok": False, "error": f"The code on {object_name} rusted away and is unreadable."}
         state.secret_state["code_read"] = True
-        return {"ok": True, "code": state.secret_state.get("secret_code")}
+        return {"ok": True, "code": state.secret_state.get("inscribed_code", state.secret_state.get("secret_code"))}
 
     def _submit_secret_code(
         self, agent_id: str, orchestrator, code: str = "", **_: Dict

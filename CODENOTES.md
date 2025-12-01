@@ -25,3 +25,10 @@ Quick reminders for running planners with OpenAI:
    ```
 
 4) If the key is in `.bashrc`, remember that non-interactive shells skip most of it due to the interactive guard. Use the `.env` approach above to ensure the key is present for Hydra runs.
+
+5) Inspect the latest run/log quickly:
+   ```bash
+   latest=$(ls -t outputs/habitat_llm | head -n1)
+   tail -n 40 outputs/habitat_llm/$latest/habitat_llm.log
+   cat outputs/habitat_llm/$latest/.hydra/overrides.yaml
+   ```

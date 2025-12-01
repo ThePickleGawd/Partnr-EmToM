@@ -623,6 +623,19 @@ class EnvironmentInterface:
             for curr_agent, camera_source in zip(
                 self.trajectory_agent_names, self.conf.trajectory.camera_prefixes
             ):
+                # Ensure output directories still exist (defensive against manual runs)
+                agent_root = self.trajectory_save_paths.get(curr_agent, None)
+                if agent_root is None:
+                    continue
+                os.makedirs(agent_root, exist_ok=True)
+                if "rgb" in self.save_options:
+                    os.makedirs(os.path.join(agent_root, "rgb"), exist_ok=True)
+                if "depth" in self.save_options:
+                    os.makedirs(os.path.join(agent_root, "depth"), exist_ok=True)
+                if "panoptic" in self.save_options:
+                    os.makedirs(os.path.join(agent_root, "panoptic"), exist_ok=True)
+                os.makedirs(os.path.join(agent_root, "pose"), exist_ok=True)
+
                 if "rgb" in self.save_options:
                     if self._single_agent_mode:
                         rgb = obs[f"{camera_source}_rgb"]

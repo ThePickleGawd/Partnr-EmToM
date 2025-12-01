@@ -901,45 +901,24 @@ class EvaluationRunner:
         Write per-agent first-person videos from accumulated FPV frames.
         """
         if self._fpv_recorder and not self._fpv_recorder_failed:
+            frame_counts = {
+                agent: len(frames) for agent, frames in self._fpv_recorder._frames.items()
+            }
+            if not frame_counts or sum(frame_counts.values()) == 0:
+                print(
+                    f"[FPV] Recorder has no frames; expected cameras={getattr(self._fpv_recorder, '_camera_keys', {})}"
+                )
+                return
             try:
                 paths = self._fpv_recorder.save(postfix=self.episode_filename)
                 for agent_name, path in paths.items():
                     print(f"[FPV] Saved first-person video for {agent_name} to {path}")
                 return
             except Exception as exc:
-                print(f"[FPV] Failed to write recorder videos: {exc}")
-        # Legacy fallback using head_rgb accumulation
-        frames_store = getattr(self, "_fpv_frames", None)
-        if not frames_store:
-            print("[FPV] No first-person frames captured; check head_rgb sensor availability.")
-            return
-        try:
-            results_root = getattr(
-                getattr(self.env_interface, "conf", None), "paths", None
-            )
-            out_root = (
-                getattr(results_root, "results_dir", None)
-                if results_root is not None
-                else "outputs"
-            )
-            out_dir = os.path.join(out_root, "videos")
-            os.makedirs(out_dir, exist_ok=True)
-            for agent_uid, frames in frames_store.items():
-                if not frames:
-                    continue
-                video_path = os.path.join(
-                    out_dir, f"fpv_agent{agent_uid}_{self.episode_filename}.mp4"
+                print(
+                    f"[FPV] Failed to write recorder videos: {exc}; frame_counts={frame_counts}"
                 )
-                try:
-                    # Match FPV fps to third-person video if available
-                    fps = getattr(self.env_interface.conf.evaluation, "video_fps", 30)
-                    imageio.mimwrite(video_path, frames, fps=fps)
-                    print(f"[FPV] Saved first-person video for agent_{agent_uid} to {video_path} (fps={fps})")
-                except Exception as exc:
-                    print(f"[FPV] Failed to write FPV video for agent_{agent_uid}: {exc}")
-        finally:
-            # Clear frames after writing
-            self._fpv_frames = {}
+            return
 
     def _store_first_person_frames(self, observations: Dict[str, Any]) -> None:
         """

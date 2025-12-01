@@ -1,6 +1,8 @@
 defaults:
   - /tools/motor_skills@tools.motor_skills:
     - oracle_nav
+    - oracle_pick
+    - oracle_place
     - oracle_explore
     - wait
   - /tools/perception@tools.perception:

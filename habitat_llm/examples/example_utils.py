@@ -143,11 +143,7 @@ class DebugVideoUtil:
         out_file = f"{self.output_dir}/videos/video-{postfix}.mp4"
         print(f"Saving video to {out_file}")
         os.makedirs(f"{self.output_dir}/videos", exist_ok=True)
-        writer = imageio.get_writer(
-            out_file,
-            fps=30,
-            quality=4,
-        )
+        writer = imageio.get_writer(out_file, fps=30, quality=4)
         for frame in self.frames:
             writer.append_data(frame)
 
@@ -256,7 +252,10 @@ class FirstPersonVideoRecorder:
         """
         for agent_name, obs_key in self._camera_keys.items():
             if obs_key not in observations:
-                raise KeyError(f"Observation key '{obs_key}' missing for agent '{agent_name}'. Available keys: {list(observations.keys())}")
+                raise KeyError(
+                    f"Observation key '{obs_key}' missing for agent '{agent_name}'. "
+                    f"Available keys: {list(observations.keys())}"
+                )
             frame = self._to_uint8(observations[obs_key])
             self._frames.setdefault(agent_name, []).append(frame)
 
