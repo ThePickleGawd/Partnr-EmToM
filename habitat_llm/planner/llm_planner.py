@@ -450,13 +450,25 @@ class LLMPlanner(Planner):
 
         :return: Dict of agent uid to formatted message string.
         """
+        if not hasattr(self, "_delivered_messages"):
+            self._delivered_messages = set()
         message_responses: Dict[int, str] = {}
         for agent in self.agents:
             pending = self.env_interface.consume_agent_messages(agent.uid)
             if len(pending) == 0:
                 continue
+            # Deduplicate messages already surfaced this episode
+            new_msgs = []
+            for msg in pending:
+                key = (agent.uid, msg["from"], msg["message"])
+                if key in self._delivered_messages:
+                    continue
+                self._delivered_messages.add(key)
+                new_msgs.append(msg)
+            if len(new_msgs) == 0:
+                continue
             formatted = "\n".join(
-                [f"Agent_{msg['from']} said: {msg['message']}" for msg in pending]
+                [f"Agent_{msg['from']} said: {msg['message']}" for msg in new_msgs]
             )
             message_responses[agent.uid] = formatted
         return message_responses

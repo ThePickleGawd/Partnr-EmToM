@@ -172,6 +172,8 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                         planner_info.get("high_level_actions", {}),
                         popup_images=popup_images,
                     )
+                    # Also capture first-person frames for per-agent videos
+                    self._store_first_person_frames(observations)
 
             # Update game state based on latest env situation
             self._maybe_update_game()

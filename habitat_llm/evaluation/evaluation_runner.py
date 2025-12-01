@@ -27,7 +27,7 @@ from matplotlib.animation import FuncAnimation
 
 from habitat_llm.agent import Agent
 from habitat_llm.agent.env import EnvironmentInterface
-from habitat_llm.examples.example_utils import DebugVideoUtil
+from habitat_llm.examples.example_utils import DebugVideoUtil, FirstPersonVideoRecorder
 from habitat_llm.planner.planner import Planner
 from habitat_llm.utils import cprint, rollout_print
 from habitat_llm.utils.sim import init_agents
@@ -130,8 +130,24 @@ class EvaluationRunner:
 
         # Initialize the debug video util
         self.dvu = DebugVideoUtil(self.env_interface, self.output_dir)
+        # First-person recorder aligned to trajectory cameras
+        self._fpv_recorder_failed: bool = False
+        self._fpv_recorder: Optional[FirstPersonVideoRecorder] = None
+        if getattr(self.evaluation_runner_config, "save_video", False):
+            try:
+                fps = getattr(self.env_interface.conf.evaluation, "video_fps", 30)
+                self._fpv_recorder = FirstPersonVideoRecorder(
+                    self.env_interface, output_dir=self.output_dir, fps=fps
+                )
+            except Exception as exc:
+                print(f"[FPV] Failed to initialize recorder: {exc}")
+                self._fpv_recorder_failed = True
         self._write_out_world_graph: bool = dump_world_graph
         self._world_graph_write_out_frequency = 5
+        # Track last printed planner string to avoid spamming identical logs each step
+        self._last_print: Optional[str] = None
+        # Track how much of the planner print buffer we've already emitted
+        self._last_print_len: int = 0
 
     def _initialize_planners(self):
         """
@@ -603,6 +619,18 @@ class EvaluationRunner:
         planner_info: Dict[str, Any] = {}
         low_level_actions: List[Dict[str, Any]] = []
         should_end = False
+        # Clear FPV recorder buffers per episode
+        if self._fpv_recorder is not None:
+            # Rebuild keys in case trajectory config changed between episodes
+            try:
+                fps = getattr(self.env_interface.conf.evaluation, "video_fps", 30)
+                self._fpv_recorder = FirstPersonVideoRecorder(
+                    self.env_interface, output_dir=self.output_dir, fps=fps
+                )
+                self._fpv_recorder_failed = False
+            except Exception as exc:
+                print(f"[FPV] Failed to reset recorder: {exc}")
+                self._fpv_recorder_failed = True
         # FPV bookkeeping
         self._fpv_frames = {}
         self._fpv_missing = set()
@@ -637,7 +665,7 @@ class EvaluationRunner:
                         popup_images=popup_images,
                     )
                     # Also store first-person frames for a separate per-agent video
-                    self._store_first_person_frames(observations, planner_info.get("high_level_actions", {}))
+                    self._store_first_person_frames(observations)
 
             # Get next low level actions
             low_level_actions, planner_info, should_end = self.get_low_level_actions(
@@ -667,6 +695,7 @@ class EvaluationRunner:
                         planner_info.get("high_level_actions", {}),
                         popup_images=popup_images,
                     )
+                    self._store_first_person_frames(observations)
                 low_level_actions, planner_info, should_end = self.get_low_level_actions(
                     self.current_instruction,
                     observations,
@@ -855,6 +884,15 @@ class EvaluationRunner:
         """
         Write per-agent first-person videos from accumulated FPV frames.
         """
+        if self._fpv_recorder and not self._fpv_recorder_failed:
+            try:
+                paths = self._fpv_recorder.save(postfix=self.episode_filename)
+                for agent_name, path in paths.items():
+                    print(f"[FPV] Saved first-person video for {agent_name} to {path}")
+                return
+            except Exception as exc:
+                print(f"[FPV] Failed to write recorder videos: {exc}")
+        # Legacy fallback using head_rgb accumulation
         frames_store = getattr(self, "_fpv_frames", None)
         if not frames_store:
             print("[FPV] No first-person frames captured; check head_rgb sensor availability.")
@@ -886,3 +924,15 @@ class EvaluationRunner:
         finally:
             # Clear frames after writing
             self._fpv_frames = {}
+
+    def _store_first_person_frames(self, observations: Dict[str, Any]) -> None:
+        """
+        Capture first-person frames from the configured trajectory cameras.
+        """
+        if self._fpv_recorder_failed or self._fpv_recorder is None:
+            return
+        try:
+            self._fpv_recorder.record_step(observations)
+        except Exception as exc:
+            print(f"[FPV] Failed to record frame: {exc}")
+            self._fpv_recorder_failed = True

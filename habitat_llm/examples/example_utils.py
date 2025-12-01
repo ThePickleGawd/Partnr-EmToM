@@ -6,7 +6,7 @@
 
 import os
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import imageio
@@ -61,32 +61,15 @@ class DebugVideoUtil:
                 else:
                     images.append(obs_value)
 
-        if not images:
-            raise ValueError(
-                f"No third_rgb observations found; keys: {list(batch.keys())}"
-            )
         # Extract dimensions of the first image
-        first = images[0]
-        if hasattr(first, "cpu"):
-            first = first.cpu().numpy()
-        first_np = np.array(first)
-        if first_np.shape[0] in (3, 4):
-            first_np = np.transpose(first_np, (1, 2, 0))
-        height, width = first_np.shape[:2]
+        height, width = images[0].shape[1:3]
 
         # Create an empty canvas to hold the concatenated images
         concat_image = np.zeros((height, width * len(images), 3), dtype=np.uint8)
 
         # Iterate through the images and concatenate them horizontally
         for i, image in enumerate(images):
-            if hasattr(image, "cpu"):
-                image_np = image.cpu().numpy()
-            else:
-                image_np = np.array(image)
-            if image_np.shape[0] in (3, 4):
-                image_np = np.transpose(image_np, (1, 2, 0))
-            image_np = np.ascontiguousarray(image_np)
-            concat_image[:, i * width : (i + 1) * width] = image_np[:, :, :3]
+            concat_image[:, i * width : (i + 1) * width] = image.cpu()
 
         return concat_image
 
@@ -163,31 +146,7 @@ class DebugVideoUtil:
             quality=4,
         )
         for frame in self.frames:
-            arr = np.array(frame)
-            # Squeeze any singleton dimensions to reduce to 2D/3D.
-            if arr.ndim > 3 or 1 in arr.shape:
-                arr = np.squeeze(arr)
-            print(f"[VideoDebug] raw frame shape after squeeze: {arr.shape}, dtype={arr.dtype}")
-            # Handle channel-first tensors
-            if arr.ndim == 3 and arr.shape[0] in (3, 4) and arr.shape[2] not in (3, 4):
-                arr = np.transpose(arr, (1, 2, 0))
-            # If 2D, expand to 3 channels
-            if arr.ndim == 2:
-                arr = np.stack([arr] * 3, axis=-1)
-            # If single/dual channel, pad to 3
-            if arr.ndim == 3 and arr.shape[2] == 1:
-                arr = np.repeat(arr, 3, axis=2)
-            elif arr.ndim == 3 and arr.shape[2] == 2:
-                arr = np.concatenate([arr, arr[:, :, :1]], axis=2)
-            # Truncate extra channels
-            if arr.ndim == 3 and arr.shape[2] > 3:
-                arr = arr[:, :, :3]
-            if arr.ndim != 3 or arr.shape[2] not in (1, 2, 3):
-                print(f"[Video] Skipping frame with invalid shape {arr.shape}")
-                continue
-            arr = np.ascontiguousarray(arr)
-            print(f"[VideoDebug] writing frame shape {arr.shape}, dtype={arr.dtype}")
-            writer.append_data(arr.astype(np.uint8))
+            writer.append_data(frame)
 
         writer.close()
         if play:
@@ -221,6 +180,119 @@ class DebugVideoUtil:
 
         cap.release()
         cv2.destroyAllWindows()
+
+
+class FirstPersonVideoRecorder:
+    """
+    Minimal helper to write first-person videos that mirror the trajectory logger
+    camera selection. This avoids relying on the split-screen DebugVideoUtil.
+    """
+
+    def __init__(
+        self,
+        env_interface: EnvironmentInterface,
+        output_dir: Optional[str] = None,
+        fps: int = 30,
+    ) -> None:
+        self.env_interface = env_interface
+        # Decide where to write outputs
+        results_root = getattr(getattr(env_interface.conf, "paths", None), "results_dir", None)
+        self.output_dir = output_dir or results_root or "outputs"
+        self.fps = fps
+        self._frames: Dict[str, List[np.ndarray]] = {}
+        self._camera_keys: Dict[str, str] = self._build_camera_keys()
+
+    def _build_camera_keys(self) -> Dict[str, str]:
+        """
+        Build a map from agent name to observation key using the trajectory config.
+        This keeps the FPV video aligned with the saved trajectories.
+        """
+        camera_keys: Dict[str, str] = {}
+        traj_conf = getattr(self.env_interface.conf, "trajectory", None)
+        agent_names = list(getattr(traj_conf, "agent_names", [])) if traj_conf else []
+        cam_prefixes = list(getattr(traj_conf, "camera_prefixes", [])) if traj_conf else []
+        if agent_names and cam_prefixes and len(agent_names) == len(cam_prefixes):
+            for agent_name, cam_prefix in zip(agent_names, cam_prefixes):
+                if getattr(self.env_interface, "_single_agent_mode", False):
+                    key = f"{cam_prefix}_rgb"
+                else:
+                    key = f"{agent_name}_{cam_prefix}_rgb"
+                camera_keys[agent_name] = key
+            return camera_keys
+
+        # Fallback: assume standard head_rgb naming for all configured evaluation agents
+        eval_agents = []
+        try:
+            eval_agents = [
+                int(agent_conf.uid) for agent_conf in self.env_interface.conf.evaluation.agents.values()
+            ]
+        except Exception:
+            eval_agents = [0]
+        for uid in eval_agents:
+            agent_name = f"agent_{uid}"
+            if getattr(self.env_interface, "_single_agent_mode", False):
+                key = "head_rgb"
+            else:
+                key = f"{agent_name}_head_rgb"
+            camera_keys[agent_name] = key
+        return camera_keys
+
+    @staticmethod
+    def _to_uint8(frame: Any) -> np.ndarray:
+        """
+        Convert a tensor/array frame to channel-last uint8.
+        """
+        if hasattr(frame, "detach"):
+            frame = frame.detach()
+        if hasattr(frame, "cpu"):
+            frame = frame.cpu()
+        frame_np = np.array(frame)
+        if frame_np.ndim == 4 and frame_np.shape[0] == 1:
+            frame_np = frame_np[0]
+        if frame_np.ndim == 3 and frame_np.shape[0] in (3, 4):
+            frame_np = np.transpose(frame_np, (1, 2, 0))
+        if frame_np.dtype != np.uint8:
+            frame_np = np.clip(frame_np, 0, 255)
+            if frame_np.max() <= 1.0:
+                frame_np = frame_np * 255.0
+            frame_np = frame_np.astype(np.uint8)
+        if frame_np.ndim != 3 or frame_np.shape[2] < 3:
+            raise ValueError(f"Frame has invalid shape for video: {frame_np.shape}")
+        return np.ascontiguousarray(frame_np[:, :, :3])
+
+    def record_step(self, observations: Dict[str, Any]) -> None:
+        """
+        Capture first-person frames for all configured agents from a single step.
+        """
+        for agent_name, obs_key in self._camera_keys.items():
+            if obs_key not in observations:
+                # Skip missing streams without killing recording for others
+                print(f"[FPV] Observation key '{obs_key}' missing for {agent_name}; available keys: {list(observations.keys())}")
+                continue
+            frame = self._to_uint8(observations[obs_key])
+            self._frames.setdefault(agent_name, []).append(frame)
+
+    def save(self, postfix: str = "") -> Dict[str, str]:
+        """
+        Write per-agent FPV videos to disk. Returns a map of agent name to path.
+        """
+        if not self._frames:
+            raise ValueError("No frames recorded; call record_step before save().")
+        video_dir = os.path.join(self.output_dir, "videos")
+        os.makedirs(video_dir, exist_ok=True)
+        paths: Dict[str, str] = {}
+        for agent_name, frames in self._frames.items():
+            if not frames:
+                continue
+            filename = f"fpv_{agent_name}"
+            if postfix:
+                filename += f"_{postfix}"
+            video_path = os.path.join(video_dir, f"{filename}.mp4")
+            imageio.mimwrite(video_path, frames, fps=self.fps)
+            paths[agent_name] = video_path
+        # Clear stored frames after writing
+        self._frames = {}
+        return paths
 
 
 def execute_skill(
