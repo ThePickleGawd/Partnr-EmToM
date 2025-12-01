@@ -18,3 +18,4 @@ defaults:
     - communication_tool
 
 env: habitat
+tools: {}

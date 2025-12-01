@@ -1,5 +1,4 @@
 defaults:
-
   - /tools/motor_skills@tools.motor_skills:
     - oracle_nav
     - oracle_explore
@@ -9,6 +8,5 @@ defaults:
     - find_receptacle_tool
     - find_object_tool
     - find_room_tool
-    - find_agent_action_tool
 
 env: habitat
