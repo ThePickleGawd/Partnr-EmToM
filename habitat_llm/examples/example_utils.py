@@ -116,11 +116,14 @@ class DebugVideoUtil:
                     scale = 0.3
                     popup = cv2.resize(popup, (int(pw * scale), int(ph * scale)))
                     ph, pw = popup.shape[:2]
+                    # Position popups along the bottom to avoid covering the main view.
                     if int(agent_idx) == 0:
-                        y0, y1 = 10, 10 + ph
+                        y1 = frames_concat.shape[0] - 10
+                        y0 = y1 - ph
                         x0, x1 = 10, 10 + pw
                     else:
-                        y0, y1 = 10, 10 + ph
+                        y1 = frames_concat.shape[0] - 10
+                        y0 = y1 - ph
                         x1 = frames_concat.shape[1] - 10
                         x0 = x1 - pw
                     frames_concat[y0:y1, x0:x1] = popup

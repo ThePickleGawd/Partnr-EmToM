@@ -312,8 +312,7 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 )
             elif config.game.type == "time_game":
                 spec = TimeGameSpec(
-                    max_submissions=getattr(config.game, "max_submissions", 2),
-                    decay_strength=getattr(config.game, "decay_strength", 0.35),
+                    max_submissions=getattr(config.game, "max_submissions", 3),
                 )
             else:
                 raise ValueError(f"Unknown game type {config.game.type}")

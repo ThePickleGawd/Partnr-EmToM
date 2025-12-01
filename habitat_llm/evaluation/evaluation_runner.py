@@ -808,11 +808,39 @@ class EvaluationRunner:
 
         return info
 
+    def _get_fpv_keys(self) -> Dict[int, str]:
+        """
+        Build a per-agent map to the FPV observation key. Prefer trajectory cameras; fall back to head_rgb.
+        """
+        keys: Dict[int, str] = {}
+        traj = getattr(self.env_interface.conf, "trajectory", None)
+        agent_names = list(getattr(traj, "agent_names", [])) if traj else []
+        cam_prefixes = list(getattr(traj, "camera_prefixes", [])) if traj else []
+        if agent_names and cam_prefixes and len(agent_names) == len(cam_prefixes):
+            for name, prefix in zip(agent_names, cam_prefixes):
+                try:
+                    uid = int(name.split("_")[-1]) if name.startswith("agent_") else 0
+                except Exception:
+                    uid = 0
+                if getattr(self.env_interface, "_single_agent_mode", False):
+                    key = f"{prefix}_rgb"
+                else:
+                    key = f"{name}_{prefix}_rgb"
+                keys[uid] = key
+        else:
+            for agent in self.agents.values():
+                if getattr(self.env_interface, "_single_agent_mode", False):
+                    key = "head_rgb"
+                else:
+                    key = f"agent_{agent.uid}_head_rgb"
+                keys[agent.uid] = key
+        return keys
+
     def _save_first_person_popups(
         self, observations: Dict[str, Any], step_idx: int
     ) -> Dict[int, str]:
         """
-        Save first-person head_rgb per agent to disk for overlay in videos.
+        Save first-person frames per agent for overlay in videos (popups).
         Returns a mapping of agent_uid to image path.
         """
         paths: Dict[int, str] = {}
@@ -825,33 +853,21 @@ class EvaluationRunner:
         out_dir = os.path.join(out_root, "manual_obs")
         os.makedirs(out_dir, exist_ok=True)
 
+        fpv_keys = self._get_fpv_keys()
+
         for agent in self.agents.values():
             try:
                 try:
                     import torch  # type: ignore
                 except Exception:
                     torch = None  # type: ignore
-                obs_agent = self.env_interface.filter_obs_space(
-                    observations, agent.uid
-                )
-                # Fallback: look for any head_rgb-like key if exact missing.
-                if "head_rgb" not in obs_agent:
-                    candidate = next(
-                        (
-                            k
-                            for k in obs_agent.keys()
-                            if "head_rgb" in k.lower()
-                        ),
-                        None,
-                    )
-                    if candidate:
-                        obs_agent["head_rgb"] = obs_agent[candidate]
-                if "head_rgb" not in obs_agent:
+                key = fpv_keys.get(agent.uid)
+                if key is None or key not in observations:
                     if agent.uid not in self._fpv_missing:
-                        print(f"[FPV] head_rgb missing for agent_{agent.uid}; keys={list(obs_agent.keys())}")
+                        print(f"[FPV] missing key for agent_{agent.uid}; expected {key}, available: {list(observations.keys())}")
                         self._fpv_missing.add(agent.uid)
                     continue
-                rgb = obs_agent["head_rgb"]
+                rgb = observations[key]
                 if torch is not None and hasattr(rgb, "detach") and isinstance(rgb, torch.Tensor):
                     rgb_np = rgb.detach().cpu().numpy()
                 else:

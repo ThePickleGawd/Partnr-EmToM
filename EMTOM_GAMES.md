@@ -7,6 +7,7 @@ Maintain this doc as new games are added. It’s a map of where to edit configs,
 - Game-specific agent configs: `habitat_llm/conf/agent/game/<game>/agent_0.yaml` and `agent_1.yaml` (tool loadout + env).
 - Sensor/camera setup: `habitat_llm/conf/habitat_conf/emtom_oracle_spot_kinematic_multi_agent_sym.yaml` (identical Spot robots, head/arm/jaw RGB/depth/panoptic).
 - Trajectory logger: `habitat_llm/conf/trajectory/trajectory_logger.yaml` (save path, cameras).
+- Game design docs: see `docs/game_descriptions_llm/` for per-game summaries (bomb_game, time_game). Keep those in sync with config changes.
 
 ## Tools (Hydra)
 - Agent tool loadouts live in the game-specific agent configs. They pull from:
@@ -27,6 +28,8 @@ set -a && source .env && set +a   # loads OPENAI_API_KEY
 ./bomb_game_run.sh
 ```
 Use `timeout 30s ./bomb_game_run.sh` for quick tests.
+
+Configs for different games should stay mostly parallel (planner type, agent overrides, tools, trajectory cameras), differing only in game-specific settings (instructions, game state/roles, game tools).
 
 ## Notes
 - Partial observability and agent asymmetry are set in each game config.
