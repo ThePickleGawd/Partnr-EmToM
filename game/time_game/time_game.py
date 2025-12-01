@@ -229,19 +229,15 @@ class TimeGameSpec(GameSpec):
                                     resolved_name = wg.get_node_from_sim_handle(handle).name
                             except Exception:
                                 resolved_name = None
-                        print(
-                            f"[TimeGame] grasp probe agent={agent_uid} is_grasped={grasped} snap_idx={snap_idx} handle={handle} name={resolved_name}"
-                        )
                         chosen = resolved_name or handle
                         if chosen:
                             held_map[str(agent_uid)] = chosen
-                    except Exception as exc:
-                        print(f"[TimeGame] grasp probe error agent={agent_name}: {exc}")
-        except Exception as exc:
-            print(f"[TimeGame] grasp probe outer error: {exc}")
+                    except Exception:
+                        pass
         except Exception:
             pass
-        print(f"[TimeGame] held_map={held_map}")
+        except Exception:
+            pass
         if game_state and hasattr(game_state, "secret_state"):
             game_state.secret_state["held_objects"] = held_map
         held_val = held_map.get(agent_id) or held_map.get(str(agent_id))

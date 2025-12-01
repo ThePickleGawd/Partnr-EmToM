@@ -162,13 +162,9 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 elif grasp_handle is not None:
                     held_obj = grasp_handle
 
-            print(
-                f"[GameRunner] held sync agent_{agent.uid}: raw={raw} grasp_state={grasp_state} grasp_idx={grasp_idx} grasp_handle={grasp_handle} grasp_name={grasp_name} chosen={held_obj}"
-            )
             if held_obj is not None:
                 held_map[str(agent.uid)] = held_obj
         if held_map:
-            print(f"[GameRunner] held_objects sync map: {held_map}")
             self.game_orchestrator.state.secret_state["held_objects"] = held_map
 
     def run_instruction(
