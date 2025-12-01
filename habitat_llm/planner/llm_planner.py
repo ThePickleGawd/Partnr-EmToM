@@ -101,7 +101,6 @@ class LLMPlanner(Planner):
         self.curr_obj_states: str = ""
         self.params: Dict[str, Any] = {}
         self._tool_signature: Optional[Tuple[str, ...]] = None
-        self._last_comm_sig: Dict[int, Tuple[str, str]] = {}
 
         # Reset agents
         for agent in self._agents:
@@ -647,12 +646,18 @@ class LLMPlanner(Planner):
 
         if self.curr_prompt == "":
             # Prepare prompts
+            agent_uid = self._agents[0].uid if self._agents else 0
+            if agent_uid not in world_graph:
+                raise ValueError(
+                    f"World graph missing agent uid {agent_uid}. "
+                    f"Available keys: {list(world_graph.keys())}"
+                )
             self.curr_prompt, self.params = self.prepare_prompt(
-                instruction, world_graph[self._agents[0].uid], observations=observations
+                instruction, world_graph[agent_uid], observations=observations
             )
             self.curr_obj_states = get_objects_descr(
-                world_graph[self._agents[0].uid],
-                self._agents[0].uid,
+                world_graph[agent_uid],
+                agent_uid,
                 include_room_name=True,
                 add_state_info=self.planner_config.objects_response_include_states,
                 centralized=self.planner_config.centralized,
@@ -733,15 +738,12 @@ class LLMPlanner(Planner):
                 self.agents, llm_response, self.params
             )
 
-            print(f"\n\n[DEBUG] Now Executing: {high_level_actions}\n\n")
+            print(f"[Action] {high_level_actions}")
 
             # Get low level actions and/or responses
             low_level_actions, responses = self.process_high_level_actions(
                 high_level_actions, observations
             )
-
-            # Store last executed high level action
-            self.last_high_level_actions = high_level_actions
         else:
             planner_info["replanned"] = {agent.uid: False for agent in self.agents}
             # Set thought to None
@@ -751,34 +753,22 @@ class LLMPlanner(Planner):
             low_level_actions, responses = self.process_high_level_actions(
                 self.last_high_level_actions, observations
             )
+            high_level_actions = self.last_high_level_actions
 
         # Log if replanning was done or not before overwriting the value
         planner_info["replan_required"] = {
             agent.uid: self.replan_required for agent in self.agents
         }
 
-        # Check if replanning is required
-        # Replanning is required when any of the actions being executed
-        # have a response indicating success or failure (and the reason)
+        # Drop CommunicationTool responses to avoid triggering replans; messages already delivered in context.
+        for agent in self.agents:
+            sig = self.last_high_level_actions.get(agent.uid, ("", "", ""))
+            if sig[0] == "CommunicationTool":
+                responses[agent.uid] = ""
         self.replan_required = any(responses.values())
         print_str += self._add_responses_to_prompt(responses)
-
-        # Suppress repeated CommunicationTool ping-pong from triggering replans.
-        for agent in self.agents:
-            sig = self.last_high_level_actions.get(agent.uid)
-            if not sig or sig[0] != "CommunicationTool":
-                continue
-            resp = responses.get(agent.uid, "")
-            if not resp:
-                continue
-            last_sig = self._last_comm_sig.get(agent.uid)
-            if last_sig == (sig[0], sig[1]):
-                # Same comm as last time; clear response to avoid immediate replan loop.
-                responses[agent.uid] = ""
-            else:
-                self._last_comm_sig[agent.uid] = (sig[0], sig[1])
-        # Recompute replan_required after comm-loop suppression
-        self.replan_required = any(responses.values())
+        # Preserve last_high_level_actions as produced
+        self.last_high_level_actions = high_level_actions
 
         # Debug: log agent locations and active nav targets for visibility.
         try:
@@ -811,6 +801,7 @@ class LLMPlanner(Planner):
         planner_info["agent_states"] = self.get_last_agent_states()
         planner_info["agent_positions"] = self.get_last_agent_positions()
         planner_info["agent_collisions"] = self.get_agent_collisions()
+
         return low_level_actions, planner_info, self.is_done
 
     def check_if_agent_done(self, llm_response: str) -> bool:

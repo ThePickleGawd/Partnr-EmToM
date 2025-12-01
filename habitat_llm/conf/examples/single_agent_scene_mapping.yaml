@@ -14,7 +14,7 @@ defaults:
 world_model:
   partial_obs: False
 robot_agent_uid: 0
-human_agent_uid: 1
+human_agent_uid: 0
 agent_asymmetry: False
 paths:
   results_dir: ${hydra:runtime.output_dir}/results

@@ -61,15 +61,32 @@ class DebugVideoUtil:
                 else:
                     images.append(obs_value)
 
+        if not images:
+            raise ValueError(
+                f"No third_rgb observations found; keys: {list(batch.keys())}"
+            )
         # Extract dimensions of the first image
-        height, width = images[0].shape[1:3]
+        first = images[0]
+        if hasattr(first, "cpu"):
+            first = first.cpu().numpy()
+        first_np = np.array(first)
+        if first_np.shape[0] in (3, 4):
+            first_np = np.transpose(first_np, (1, 2, 0))
+        height, width = first_np.shape[:2]
 
         # Create an empty canvas to hold the concatenated images
         concat_image = np.zeros((height, width * len(images), 3), dtype=np.uint8)
 
         # Iterate through the images and concatenate them horizontally
         for i, image in enumerate(images):
-            concat_image[:, i * width : (i + 1) * width] = image.cpu()
+            if hasattr(image, "cpu"):
+                image_np = image.cpu().numpy()
+            else:
+                image_np = np.array(image)
+            if image_np.shape[0] in (3, 4):
+                image_np = np.transpose(image_np, (1, 2, 0))
+            image_np = np.ascontiguousarray(image_np)
+            concat_image[:, i * width : (i + 1) * width] = image_np[:, :, :3]
 
         return concat_image
 
@@ -146,7 +163,31 @@ class DebugVideoUtil:
             quality=4,
         )
         for frame in self.frames:
-            writer.append_data(frame)
+            arr = np.array(frame)
+            # Squeeze any singleton dimensions to reduce to 2D/3D.
+            if arr.ndim > 3 or 1 in arr.shape:
+                arr = np.squeeze(arr)
+            print(f"[VideoDebug] raw frame shape after squeeze: {arr.shape}, dtype={arr.dtype}")
+            # Handle channel-first tensors
+            if arr.ndim == 3 and arr.shape[0] in (3, 4) and arr.shape[2] not in (3, 4):
+                arr = np.transpose(arr, (1, 2, 0))
+            # If 2D, expand to 3 channels
+            if arr.ndim == 2:
+                arr = np.stack([arr] * 3, axis=-1)
+            # If single/dual channel, pad to 3
+            if arr.ndim == 3 and arr.shape[2] == 1:
+                arr = np.repeat(arr, 3, axis=2)
+            elif arr.ndim == 3 and arr.shape[2] == 2:
+                arr = np.concatenate([arr, arr[:, :, :1]], axis=2)
+            # Truncate extra channels
+            if arr.ndim == 3 and arr.shape[2] > 3:
+                arr = arr[:, :, :3]
+            if arr.ndim != 3 or arr.shape[2] not in (1, 2, 3):
+                print(f"[Video] Skipping frame with invalid shape {arr.shape}")
+                continue
+            arr = np.ascontiguousarray(arr)
+            print(f"[VideoDebug] writing frame shape {arr.shape}, dtype={arr.dtype}")
+            writer.append_data(arr.astype(np.uint8))
 
         writer.close()
         if play:

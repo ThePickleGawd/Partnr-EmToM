@@ -41,7 +41,8 @@ def run_planner():
 
     # setup required overrides
     DATASET_OVERRIDES = [
-        "habitat.dataset.data_path=data/datasets/path/to/val/scenes",
+        "habitat.dataset.data_path=data/emtom/test_house.json.gz",
+        # Use the standard HSSD scene dataset config; the EMTOM test house references these assets.
         "habitat.dataset.scenes_dir=data/hssd-hab/",
     ]
     SENSOR_OVERRIDES = [
@@ -57,9 +58,7 @@ def run_planner():
         "trajectory.agent_names=[main_agent]",
     ]
 
-    EPISODE_OVERRIDES = [
-        "+episode_indices=[2,87,370,444,515,590,435,390,555,50,452,355]"
-    ]  # USE FOR VAL SCENES
+    EPISODE_OVERRIDES: list[str] = []  # run all episodes in the dataset by default
 
     # Setup config
     config_base = get_config(
@@ -128,8 +127,9 @@ def run_planner():
             break
         observations = env_interface.get_observations()
 
-        # get the list of all rooms in this house
-        rooms = env_interface.world_graph[robot_agent_uid].get_all_nodes_of_type(Room)
+        # get the list of all rooms in this house (limit to one for speed)
+        rooms_full = env_interface.world_graph[robot_agent_uid].get_all_nodes_of_type(Room)
+        rooms = rooms_full[:1] if rooms_full else []
 
         print(f"---Total number of rooms in this house: {len(rooms)}---\n\n")
         while rooms:
@@ -152,7 +152,20 @@ def run_planner():
                 observations = env_interface.parse_observations(obs)
                 # Store third person frames for generating video
                 hl_dict = {0: (hl_action_name, hl_action_input)}
-                eval_runner._store_for_video(observations, hl_dict)
+                try:
+                    eval_runner.dvu._store_for_video(observations, hl_dict)
+                except ValueError as exc:
+                    # Fallback to head_rgb if third_rgb is missing/renamed
+                    import numpy as np
+
+                    if "head_rgb" in observations:
+                        img = observations["head_rgb"]
+                        if hasattr(img, "cpu"):
+                            img = img.cpu().numpy()
+                        img = np.ascontiguousarray(img)
+                        eval_runner.dvu.frames.append(img)
+                    else:
+                        raise exc
 
                 # figure out how to get completion signal
                 if response:
@@ -162,8 +175,8 @@ def run_planner():
                 f"\tCompleted high-level action: {hl_action_name} on {hl_action_input}"
             )
 
-        if eval_runner.frames:
-            eval_runner._make_video(scene_id)
+        if eval_runner.dvu.frames:
+            eval_runner.dvu._make_video(postfix=f"{scene_id}")
         processed_scenes.add(str(scene_id))
     env_interface.sim.close()
 
