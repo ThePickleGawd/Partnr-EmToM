@@ -207,33 +207,20 @@ class FirstPersonVideoRecorder:
         Build a map from agent name to observation key using the trajectory config.
         This keeps the FPV video aligned with the saved trajectories.
         """
-        camera_keys: Dict[str, str] = {}
         traj_conf = getattr(self.env_interface.conf, "trajectory", None)
-        agent_names = list(getattr(traj_conf, "agent_names", [])) if traj_conf else []
-        cam_prefixes = list(getattr(traj_conf, "camera_prefixes", [])) if traj_conf else []
-        if agent_names and cam_prefixes and len(agent_names) == len(cam_prefixes):
-            for agent_name, cam_prefix in zip(agent_names, cam_prefixes):
-                if getattr(self.env_interface, "_single_agent_mode", False):
-                    key = f"{cam_prefix}_rgb"
-                else:
-                    key = f"{agent_name}_{cam_prefix}_rgb"
-                camera_keys[agent_name] = key
-            return camera_keys
+        if traj_conf is None:
+            raise ValueError("Trajectory config not found; cannot determine FPV cameras.")
+        agent_names = list(getattr(traj_conf, "agent_names", []))
+        cam_prefixes = list(getattr(traj_conf, "camera_prefixes", []))
+        if not agent_names or not cam_prefixes or len(agent_names) != len(cam_prefixes):
+            raise ValueError("trajectory.agent_names and trajectory.camera_prefixes must be provided and have the same length.")
 
-        # Fallback: assume standard head_rgb naming for all configured evaluation agents
-        eval_agents = []
-        try:
-            eval_agents = [
-                int(agent_conf.uid) for agent_conf in self.env_interface.conf.evaluation.agents.values()
-            ]
-        except Exception:
-            eval_agents = [0]
-        for uid in eval_agents:
-            agent_name = f"agent_{uid}"
+        camera_keys: Dict[str, str] = {}
+        for agent_name, cam_prefix in zip(agent_names, cam_prefixes):
             if getattr(self.env_interface, "_single_agent_mode", False):
-                key = "head_rgb"
+                key = f"{cam_prefix}_rgb"
             else:
-                key = f"{agent_name}_head_rgb"
+                key = f"{agent_name}_{cam_prefix}_rgb"
             camera_keys[agent_name] = key
         return camera_keys
 
@@ -266,9 +253,7 @@ class FirstPersonVideoRecorder:
         """
         for agent_name, obs_key in self._camera_keys.items():
             if obs_key not in observations:
-                # Skip missing streams without killing recording for others
-                print(f"[FPV] Observation key '{obs_key}' missing for {agent_name}; available keys: {list(observations.keys())}")
-                continue
+                raise KeyError(f"Observation key '{obs_key}' missing for agent '{agent_name}'. Available keys: {list(observations.keys())}")
             frame = self._to_uint8(observations[obs_key])
             self._frames.setdefault(agent_name, []).append(frame)
 

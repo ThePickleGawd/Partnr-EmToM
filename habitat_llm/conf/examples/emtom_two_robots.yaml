@@ -3,7 +3,7 @@
 # EMTOM-specific two-robot preset (both embodied as Spot with head_rgb sensors).
 defaults:
   - /training@             : base_train
-  - /habitat_conf          : oracle_spot_kinematic_multi_agent
+  - /habitat_conf          : emtom_oracle_spot_kinematic_multi_agent_sym
   - /habitat_conf/task     : rearrange_easy_multi_agent
   - /evaluation: decentralized_evaluation_runner_multi_agent
   - /world_model@world_model: gt_graph
@@ -17,6 +17,9 @@ defaults:
 world_model:
   partial_obs: False
 agent_asymmetry: False
+trajectory:
+  agent_names: [agent_0, agent_1]
+  camera_prefixes: [articulated_agent_jaw, articulated_agent_jaw]
 
 device      : cuda
 instruction : ''
