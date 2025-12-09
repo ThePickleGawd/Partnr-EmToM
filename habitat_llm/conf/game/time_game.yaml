@@ -18,7 +18,7 @@ game:
   type: time_game
   max_submissions: 3
   tool_delay: 2.0  # seconds to wait before executing game tools (for video visibility)
-  turn_limit: 30  # maximum high-level planning turns before game ends
+  turn_limit: 50  # maximum high-level planning turns before game ends
   instruction_prefix: "You are playing a time-separated secret-code puzzle. Follow the game rules below."
   instruction_override: "Writer has a hidden 5-digit code. Write it on an object; some objects rust or are stolen. Seeker must read and submit the code within 3 attempts."
 
