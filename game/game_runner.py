@@ -404,6 +404,12 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             self.update_agent_state_history(copy_planner_info)
             self.update_agent_action_history(copy_planner_info)
             planner_infos.append(copy_planner_info)
+
+            # Incremental save: flush video and logs so progress is viewable during run
+            if self.evaluation_runner_config.save_video and len(self.dvu.frames) > 0:
+                self.dvu._flush_video(postfix=self.episode_filename)
+            self._flush_planner_log(planner_infos)
+
             total_step_count += 1
 
         if (
