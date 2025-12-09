@@ -149,6 +149,14 @@ class GameSpec:
         """
         return []
 
+    def preprocess_message(self, agent_id: str, message: str, state: GameState) -> str:
+        """
+        Optional hook to preprocess agent communication messages before they are
+        sent. Games can use this to redact sensitive information (e.g., secret codes).
+        Default implementation returns the message unchanged.
+        """
+        return message
+
 
 # --- Orchestrator ----------------------------------------------------------
 
@@ -187,14 +195,9 @@ class GameOrchestrator:
 
     def should_count_turn(self, planner_info: dict, low_level_actions: dict) -> bool:
         """
-        Count a turn when we either executed low-level actions or received a new
-        high-level action signature. Prevents burning turns on identical repeated
-        planner states (e.g., waiting on the same action).
+        Count a turn only when there's a NEW high-level action.
+        This counts actual agent decisions, not low-level motor steps.
         """
-        if low_level_actions:
-            self._last_action_sig = None
-            return True
-
         sig = None
         if planner_info and "high_level_actions" in planner_info:
             try:

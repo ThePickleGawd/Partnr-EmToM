@@ -134,29 +134,6 @@ class DebugVideoUtil:
         self.frames.append(frames_concat)
         return
 
-    def _flush_video(self, postfix: str = "") -> None:
-        """
-        Write current frames to video file, overwriting previous.
-        Allows viewing progress during long runs or after early exit.
-
-        :param postfix: An optional postfix for the video file name.
-        """
-        if not self.frames:
-            return
-        frames = list(self.frames)
-        if len(frames) == 1:
-            frames = frames * 30  # pad to ~1s @30fps
-        extra = f"-{postfix}" if postfix else ""
-        out_file = f"{self.output_dir}/videos/video{extra}.mp4"
-        os.makedirs(f"{self.output_dir}/videos", exist_ok=True)
-        try:
-            writer = imageio.get_writer(out_file, fps=30, quality=4)
-            for frame in frames:
-                writer.append_data(frame)
-            writer.close()
-        except Exception:
-            pass  # Ignore flush errors to not interrupt the run
-
     def _make_video(self, play: bool = True, postfix: str = "") -> None:
         """
         Makes a video from a pre-processed set of frames using imageio and saves it to the output directory.

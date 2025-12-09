@@ -345,3 +345,13 @@ class TimeGameSpec(GameSpec):
         if len(pool) < 3:
             pool = self._catalog
         return self.rng.sample(pool, k=min(k, len(pool)))
+
+    def preprocess_message(self, agent_id: str, message: str, state: GameState) -> str:
+        """
+        Redact the secret code from communication messages to prevent cheating.
+        The Writer must use write_secret_code and the Seeker must use read_secret_code.
+        """
+        secret_code = state.secret_state.get("secret_code", "")
+        if secret_code and secret_code in message:
+            return message.replace(secret_code, "[REDACTED_CODE]")
+        return message

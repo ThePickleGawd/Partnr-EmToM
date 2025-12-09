@@ -6,7 +6,6 @@
 
 """Simple communication tool that lets agents exchange short text messages."""
 
-import re
 from typing import List, Tuple
 
 from habitat_llm.tools import PerceptionTool
@@ -60,18 +59,6 @@ class CommunicationTool(PerceptionTool):
 
         if normalized == "":
             return None, "Provide a short message to broadcast."
-
-        # Time game: forbid leaking numeric codes over comms; enforce use of write/read tools.
-        try:
-            game_conf = getattr(getattr(self.env_interface, "conf", None), "game", None)
-            game_type = getattr(game_conf, "type", None)
-        except Exception:
-            game_type = None
-        if game_type == "time_game" and re.search(r"\d", normalized):
-            return (
-                None,
-                "Numeric codes must not be sent via CommunicationTool in the time game. Use write_secret_code/read_secret_code instead.",
-            )
 
         self.env_interface.post_agent_message(self.agent_uid, normalized)
         return (
