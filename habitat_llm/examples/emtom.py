@@ -334,6 +334,8 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
             game_orchestrator = GameOrchestrator(spec, adapter)
             # Optional global turn limit across all game types.
             game_orchestrator.turn_limit = getattr(config.game, "turn_limit", None)
+            # Optional delay before game tool execution (for video visibility).
+            game_orchestrator.tool_delay = getattr(config.game, "tool_delay", 0.0)
             if config.game.instruction_override:
                 game_instruction_override = config.game.instruction_override
     else:

@@ -15,7 +15,7 @@ set +a
 python -m habitat_llm.examples.emtom --config-name game/time_game \
     mode="cli" \
     evaluation.save_video=True \
-    +game.manual_agents=[0,1] \
+    +game.manual_agents=[] \
     +evaluation.save_fpv_stills=False \
     habitat.dataset.data_path="data/emtom/test_house.json.gz" \
     habitat.dataset.content_scenes="[${SCENE_ID}]" \

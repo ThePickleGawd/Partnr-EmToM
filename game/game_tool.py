@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List
 
 from habitat_llm.tools import Tool
@@ -27,6 +28,10 @@ class GameTool(Tool):
         return self._argument_types
 
     def process_high_level_action(self, input_query, observations):
+        # Apply configurable delay before tool execution (for video visibility)
+        delay = getattr(self.orchestrator, "tool_delay", 0.0)
+        if delay > 0:
+            time.sleep(delay)
         # input_query may include arguments separated by comma; pass raw to handler
         try:
             result = self.descriptor.handler(

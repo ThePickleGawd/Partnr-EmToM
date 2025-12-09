@@ -165,6 +165,7 @@ class GameOrchestrator:
         self.turn_limit: Optional[int] = None
         self.turn_count: int = 0
         self._last_action_sig: Optional[str] = None
+        self.tool_delay: float = 0.0  # Delay in seconds before game tool execution
 
     def start(self, agent_ids: List[str]) -> GameState:
         self.state = self.game_spec.initialize(agent_ids, self.env)
