@@ -1,13 +1,13 @@
 # @package _global_
 
-# Compose a runnable config for the time-separated room game.
+# Switch flip communication game configuration
 defaults:
   - /examples/emtom_two_robots
   - override /evaluation: decentralized_evaluation_runner_multi_agent
   - override /llm@evaluation.agents.agent_0.planner.plan_config.llm: bedrock_claude
   - override /llm@evaluation.agents.agent_1.planner.plan_config.llm: bedrock_claude
-  - override /agent@evaluation.agents.agent_0.config: game/time_game/agent_0
-  - override /agent@evaluation.agents.agent_1.config: game/time_game/agent_1
+  - override /agent@evaluation.agents.agent_0.config: game/switch_game/agent_0
+  - override /agent@evaluation.agents.agent_1.config: game/switch_game/agent_1
   - override /instruct@evaluation.agents.agent_0.planner.plan_config.instruct: emtom_no_visual
   - override /instruct@evaluation.agents.agent_1.planner.plan_config.instruct: emtom_no_visual
   - _self_
@@ -15,13 +15,12 @@ defaults:
 # Game config
 game:
   enable: true
-  type: time_game
-  max_submissions: 3
+  type: switch_game
   tool_delay: 2.0  # seconds to wait before executing game tools (for video visibility)
-  instruction_prefix: "You are playing a time-separated secret-code puzzle. Follow the game rules below."
-  instruction_override: "Writer has a hidden 5-digit code. Write it on an object; some objects rust or are stolen. Seeker must read and submit the code within 3 attempts. Communicate if something is unexpected, there are hidden game rules"
+  instruction_prefix: "You are playing a switch coordination puzzle."
+  instruction_override: "Flipper can toggle switches in rooms. Observer sees which rooms are ON and has a target pattern. Communicate to achieve the pattern. Note: the room that Flipper toggles may not be the same room that Observer sees change."
 
-# Task/env tweaks for the time game
+# Task/env tweaks for the switch game
 instruction: "${game.instruction_override}"
 agent_asymmetry: True
 world_model:
@@ -37,7 +36,7 @@ evaluation:
       planner:
         plan_config:
           constrained_generation: True
-          replanning_threshold: 100
+          replanning_threshold: 20
           llm:
             inference_mode: "rlm"
     agent_1:
@@ -46,6 +45,6 @@ evaluation:
       planner:
         plan_config:
           constrained_generation: True
-          replanning_threshold: 100
+          replanning_threshold: 20
           llm:
             inference_mode: "rlm"

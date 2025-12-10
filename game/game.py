@@ -170,52 +170,11 @@ class GameOrchestrator:
         self.game_spec = game_spec
         self.env = env_adapter
         self.state: Optional[GameState] = None
-        self.turn_limit: Optional[int] = None
-        self.turn_count: int = 0
-        self._last_action_sig: Optional[str] = None
         self.tool_delay: float = 0.0  # Delay in seconds before game tool execution
 
     def start(self, agent_ids: List[str]) -> GameState:
         self.state = self.game_spec.initialize(agent_ids, self.env)
         return self.state
-
-    def increment_turn(self) -> bool:
-        """
-        Increment turn counter. If a turn limit is set and exceeded, mark terminal.
-        Returns True if still allowed to proceed, False if limit reached.
-        """
-        self.turn_count += 1
-        if self.turn_limit is not None and self.turn_count >= self.turn_limit:
-            if self.state:
-                self.state.terminal = True
-                if self.state.outcome is None:
-                    self.state.outcome = "failure_turn_limit"
-            return False
-        return True
-
-    def should_count_turn(self, planner_info: dict, low_level_actions: dict) -> bool:
-        """
-        Count a turn only when there's a NEW high-level action.
-        This counts actual agent decisions, not low-level motor steps.
-        """
-        sig = None
-        if planner_info and "high_level_actions" in planner_info:
-            try:
-                # Deterministic signature for comparison
-                items = sorted(
-                    (aid, act[0], act[1]) for aid, act in planner_info["high_level_actions"].items()
-                )
-                sig = str(items)
-            except Exception:
-                sig = str(planner_info.get("high_level_actions"))
-
-        if sig is None:
-            return False
-
-        if sig != self._last_action_sig:
-            self._last_action_sig = sig
-            return True
-        return False
 
     def get_public_info(self) -> Dict[str, Any]:
         return self.state.public_info if self.state else {}
