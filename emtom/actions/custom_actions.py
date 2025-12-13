@@ -6,11 +6,18 @@ Each action has:
 - A normal expected behavior
 - Can be transformed by mechanics (inverse, remote control, counting, etc.)
 - Produces observations that may differ per agent (theory of mind)
+
+To add a new action:
+1. Create a class that extends EMTOMAction
+2. Decorate it with @register_action("ActionName")
+3. The action will automatically be available in exploration, generation, and benchmark
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+from emtom.actions.registry import register_action, ActionRegistry
 
 if TYPE_CHECKING:
     from habitat_llm.agent.env import EnvironmentInterface
@@ -63,6 +70,7 @@ class EMTOMAction(ABC):
         return []
 
 
+@register_action("Hide")
 class HideAction(EMTOMAction):
     """
     Hide an object from the scene.
@@ -127,6 +135,7 @@ class HideAction(EMTOMAction):
         return objects[:10]  # Limit to 10
 
 
+@register_action("Inspect")
 class InspectAction(EMTOMAction):
     """
     Carefully inspect an object to learn about its properties.
@@ -191,6 +200,7 @@ class InspectAction(EMTOMAction):
         return targets[:10]  # Limit to 10
 
 
+@register_action("WriteMessage")
 class WriteMessageAction(EMTOMAction):
     """
     Write a message on a surface or leave a note.
@@ -243,12 +253,13 @@ class WriteMessageAction(EMTOMAction):
         return targets[:10]  # Limit to 10
 
 
-# Registry of all EMTOM custom actions
-EMTOM_ACTIONS: Dict[str, EMTOMAction] = {
-    "Hide": HideAction(),
-    "Inspect": InspectAction(),
-    "WriteMessage": WriteMessageAction(),
-}
+def get_all_actions() -> Dict[str, EMTOMAction]:
+    """Get all registered EMTOM actions (instantiated)."""
+    return ActionRegistry.instantiate_all()
+
+
+# For backwards compatibility - dynamically gets all registered actions
+EMTOM_ACTIONS: Dict[str, EMTOMAction] = get_all_actions()
 
 
 class EMTOMActionExecutor:
@@ -256,6 +267,7 @@ class EMTOMActionExecutor:
     Executor for EMTOM custom actions.
 
     Integrates custom actions with the Habitat environment and mechanics system.
+    Uses the ActionRegistry to automatically discover all registered actions.
     """
 
     def __init__(
@@ -265,7 +277,8 @@ class EMTOMActionExecutor:
     ):
         self.env = env_interface
         self.mechanics = mechanics or []
-        self.actions = dict(EMTOM_ACTIONS)
+        # Get all registered actions from the registry
+        self.actions = ActionRegistry.instantiate_all()
 
     def get_available_actions(self, world_state: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get list of available custom actions with their targets."""

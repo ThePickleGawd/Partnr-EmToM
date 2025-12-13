@@ -17,7 +17,7 @@ import json
 import glob
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -27,6 +27,7 @@ from emtom.task_gen import (
     TrajectoryAnalyzer,
     TaskGenerator,
 )
+from habitat_llm.llm import instantiate_llm
 
 
 def load_trajectory(trajectory_path: str) -> Dict[str, Any]:
@@ -106,25 +107,37 @@ def print_task(task, index: int):
 def generate_tasks_from_trajectory(
     trajectory: Dict[str, Any],
     output_dir: str,
+    llm_client: Any,
     num_agents: int = 2,
     max_tasks: int = 5,
 ) -> List[Any]:
-    """Generate tasks from a single trajectory."""
+    """Generate tasks from a single trajectory using LLM."""
     print(f"\n[Analyzing] Trajectory: {trajectory.get('episode_id', 'unknown')}")
-    print(f"  Scene: {trajectory.get('scene_id', 'unknown')}")
+    print(f"  Scene: {trajectory.get('metadata', {}).get('scene_id', 'unknown')}")
     print(f"  Steps: {trajectory.get('statistics', {}).get('total_steps', 'N/A')}")
     print(f"  Surprises: {trajectory.get('statistics', {}).get('total_surprises', 0)}")
+
+    # Check for surprises
+    surprises = trajectory.get("surprise_summary", [])
+    if not surprises:
+        for step in trajectory.get("steps", []):
+            surprises.extend(step.get("surprises", []))
+
+    if not surprises:
+        print("  ERROR: No surprises found in trajectory - cannot generate tasks")
+        return []
+
+    print(f"  Found {len(surprises)} surprises:")
+    for s in surprises:
+        print(f"    - {s.get('action', '?')} on {s.get('target', '?')}: {s.get('explanation', '')[:50]}...")
 
     # Analyze trajectory
     analyzer = TrajectoryAnalyzer()
     analysis = analyzer.analyze(trajectory)
 
-    print(f"  Discovered {len(analysis.discovered_mechanics)} mechanics:")
-    for m in analysis.discovered_mechanics:
-        print(f"    - {m.mechanic_type}: {m.description}")
-
-    # Generate tasks
-    generator = TaskGenerator()
+    # Generate tasks using LLM
+    print(f"\n  Generating tasks with LLM...")
+    generator = TaskGenerator(llm_client=llm_client)
     tasks = generator.generate_tasks(
         trajectory=trajectory,
         analysis=analysis,
@@ -198,6 +211,11 @@ def main():
     print("EMTOM Task Generation from Habitat Trajectories")
     print("=" * 60)
 
+    # Initialize LLM client
+    print("\nInitializing LLM client...")
+    llm_client = instantiate_llm("openai_chat")
+    print(f"  Using model: {llm_client.generation_params.model}")
+
     # Find trajectories
     if args.trajectory_file:
         trajectory_files = [args.trajectory_file]
@@ -219,6 +237,7 @@ def main():
             tasks = generate_tasks_from_trajectory(
                 trajectory=trajectory,
                 output_dir=args.output_dir,
+                llm_client=llm_client,
                 num_agents=args.num_agents,
                 max_tasks=args.max_tasks,
             )
