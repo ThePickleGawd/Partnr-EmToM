@@ -1,79 +1,53 @@
 #!/usr/bin/env python3
 """
-Example script for generating collaborative challenge tasks from EMTOM trajectories.
+Generate collaborative challenge tasks from EMTOM Habitat exploration trajectories.
 
-Demonstrates the full pipeline:
-1. Run exploration to discover mechanics
-2. Analyze trajectory for patterns
-3. Generate collaborative challenge tasks with success/failure conditions
+This script:
+1. Loads trajectory files from Habitat exploration
+2. Analyzes the trajectory for mechanic patterns and surprises
+3. Generates collaborative challenge tasks with success/failure conditions
+
+Usage:
+    python generate_tasks.py --trajectory-dir outputs/emtom/exploration
+    python generate_tasks.py --trajectory-file outputs/emtom/exploration/trajectory_xyz.json
 """
 
 import argparse
 import json
+import glob
 import sys
 from pathlib import Path
+from typing import List, Dict, Any, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from emtom.core.world_state import Entity, TextWorldState, create_simple_world
-from emtom.exploration import (
-    ExplorationConfig,
-    ExplorationLoop,
-    ScriptedCuriosityModel,
-    RuleBasedSurpriseDetector,
-)
-from emtom.mechanics.registry import MechanicRegistry
 from emtom.task_gen import (
     TrajectoryAnalyzer,
     TaskGenerator,
 )
 
-# Import mechanics to register them
-from emtom.mechanics import inverse_open, remote_switch, counting_trigger
+
+def load_trajectory(trajectory_path: str) -> Dict[str, Any]:
+    """Load a trajectory file from Habitat exploration."""
+    with open(trajectory_path, 'r') as f:
+        data = json.load(f)
+    return data
 
 
-def create_test_world() -> TextWorldState:
-    """Create a test world with various objects."""
-    world = create_simple_world(
-        rooms=["living_room", "kitchen", "bedroom"],
-        agents=["agent_0", "agent_1"],
-    )
+def find_trajectories(trajectory_dir: str) -> List[str]:
+    """Find all trajectory files in a directory."""
+    patterns = [
+        f"{trajectory_dir}/**/trajectory_*.json",
+        f"{trajectory_dir}/trajectory_*.json",
+    ]
 
-    # Add doors
-    world.add_entity(Entity(
-        id="front_door",
-        entity_type="door",
-        properties={"is_open": False, "name": "Front Door"},
-        location="living_room",
-    ))
+    files = []
+    for pattern in patterns:
+        files.extend(glob.glob(pattern, recursive=True))
 
-    # Add switches
-    world.add_entity(Entity(
-        id="switch_1",
-        entity_type="switch",
-        properties={"is_on": False, "name": "Wall Switch"},
-        location="living_room",
-    ))
-
-    # Add lights
-    world.add_entity(Entity(
-        id="kitchen_light",
-        entity_type="light",
-        properties={"is_on": False, "name": "Kitchen Light"},
-        location="kitchen",
-    ))
-
-    # Add button
-    world.add_entity(Entity(
-        id="red_button",
-        entity_type="button",
-        properties={"is_pressed": False, "is_active": False, "name": "Red Button"},
-        location="bedroom",
-    ))
-
-    return world
+    return sorted(set(files))
 
 
 def print_task(task, index: int):
@@ -129,65 +103,19 @@ def print_task(task, index: int):
     print(f"\nREQUIRED MECHANICS: {task.required_mechanics}")
 
 
-def run_exploration_and_generate_tasks():
-    """Run the full pipeline: exploration -> analysis -> task generation."""
-    print("=" * 60)
-    print("EMTOM Collaborative Task Generation Pipeline")
-    print("=" * 60)
+def generate_tasks_from_trajectory(
+    trajectory: Dict[str, Any],
+    output_dir: str,
+    num_agents: int = 2,
+    max_tasks: int = 5,
+) -> List[Any]:
+    """Generate tasks from a single trajectory."""
+    print(f"\n[Analyzing] Trajectory: {trajectory.get('episode_id', 'unknown')}")
+    print(f"  Scene: {trajectory.get('scene_id', 'unknown')}")
+    print(f"  Steps: {trajectory.get('statistics', {}).get('total_steps', 'N/A')}")
+    print(f"  Surprises: {trajectory.get('statistics', {}).get('total_surprises', 0)}")
 
-    # Step 1: Create world and mechanics
-    print("\n[Step 1] Setting up world and mechanics...")
-    world = create_test_world()
-
-    mechanics = [
-        MechanicRegistry.instantiate("inverse_open"),
-        MechanicRegistry.instantiate("remote_switch", mappings={
-            "switch_1": "kitchen_light",
-        }),
-        MechanicRegistry.instantiate("counting_trigger", required_count=3),
-    ]
-
-    print(f"  World has {len(world.entities)} entities")
-    print(f"  Active mechanics: {[m.name for m in mechanics]}")
-
-    # Step 2: Run scripted exploration
-    print("\n[Step 2] Running exploration to discover mechanics...")
-
-    script = [
-        {"action": "open", "target": "front_door"},
-        {"action": "close", "target": "front_door"},
-        {"action": "toggle", "target": "switch_1"},
-        {"action": "move", "target": "kitchen"},
-        {"action": "look", "target": None},
-        {"action": "move", "target": "bedroom"},
-        {"action": "press", "target": "red_button"},
-        {"action": "press", "target": "red_button"},
-        {"action": "press", "target": "red_button"},
-    ]
-
-    curiosity = ScriptedCuriosityModel(script)
-    surprise_detector = RuleBasedSurpriseDetector()
-
-    config = ExplorationConfig(
-        max_steps=len(script),
-        agent_ids=["agent_0"],
-        log_path="data/trajectories/emtom",
-    )
-
-    explorer = ExplorationLoop(
-        world_state=world,
-        mechanics=mechanics,
-        curiosity_model=curiosity,
-        surprise_detector=surprise_detector,
-        config=config,
-    )
-
-    trajectory = explorer.run(metadata={"mode": "task_generation"})
-    print(f"  Completed {trajectory['statistics']['total_steps']} steps")
-    print(f"  Detected {trajectory['statistics']['total_surprises']} surprises")
-
-    # Step 3: Analyze trajectory
-    print("\n[Step 3] Analyzing trajectory for mechanic patterns...")
+    # Analyze trajectory
     analyzer = TrajectoryAnalyzer()
     analysis = analyzer.analyze(trajectory)
 
@@ -195,28 +123,25 @@ def run_exploration_and_generate_tasks():
     for m in analysis.discovered_mechanics:
         print(f"    - {m.mechanic_type}: {m.description}")
 
-    # Step 4: Generate collaborative tasks
-    print("\n[Step 4] Generating collaborative challenge tasks...")
+    # Generate tasks
     generator = TaskGenerator()
     tasks = generator.generate_tasks(
         trajectory=trajectory,
         analysis=analysis,
-        num_agents=2,
-        max_tasks=5,
+        num_agents=num_agents,
+        max_tasks=max_tasks,
     )
 
     print(f"  Generated {len(tasks)} collaborative tasks")
 
-    # Step 5: Display tasks
-    for i, task in enumerate(tasks, 1):
-        print_task(task, i)
-
-    # Step 6: Save tasks
-    output_file = f"data/tasks/emtom_challenges_{trajectory['episode_id']}.json"
-    Path("data/tasks").mkdir(parents=True, exist_ok=True)
+    # Save tasks
+    episode_id = trajectory.get('episode_id', 'unknown')
+    output_file = Path(output_dir) / f"emtom_challenges_{episode_id}.json"
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     tasks_data = {
-        "source_trajectory": trajectory["episode_id"],
+        "source_trajectory": episode_id,
+        "scene_id": trajectory.get('scene_id', 'unknown'),
         "discovered_mechanics": [m.mechanic_type for m in analysis.discovered_mechanics],
         "tasks": [task.to_dict() for task in tasks],
     }
@@ -224,23 +149,96 @@ def run_exploration_and_generate_tasks():
     with open(output_file, "w") as f:
         json.dump(tasks_data, f, indent=2)
 
-    print(f"\n[Step 6] Tasks saved to: {output_file}")
+    print(f"  Saved to: {output_file}")
 
-    return trajectory, analysis, tasks
+    return tasks
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate EMTOM collaborative challenge tasks"
+        description="Generate EMTOM collaborative challenge tasks from Habitat trajectories"
+    )
+    parser.add_argument(
+        "--trajectory-file",
+        type=str,
+        help="Path to a specific trajectory JSON file",
+    )
+    parser.add_argument(
+        "--trajectory-dir",
+        type=str,
+        default="outputs",
+        help="Directory to search for trajectory files (default: outputs)",
     )
     parser.add_argument(
         "--output-dir",
+        type=str,
         default="data/tasks",
-        help="Output directory for generated tasks",
+        help="Output directory for generated tasks (default: data/tasks)",
+    )
+    parser.add_argument(
+        "--num-agents",
+        type=int,
+        default=2,
+        help="Number of agents for collaborative tasks (default: 2)",
+    )
+    parser.add_argument(
+        "--max-tasks",
+        type=int,
+        default=5,
+        help="Maximum tasks to generate per trajectory (default: 5)",
+    )
+    parser.add_argument(
+        "--print-tasks",
+        action="store_true",
+        help="Print generated tasks to console",
     )
     args = parser.parse_args()
 
-    run_exploration_and_generate_tasks()
+    print("=" * 60)
+    print("EMTOM Task Generation from Habitat Trajectories")
+    print("=" * 60)
+
+    # Find trajectories
+    if args.trajectory_file:
+        trajectory_files = [args.trajectory_file]
+    else:
+        trajectory_files = find_trajectories(args.trajectory_dir)
+
+    if not trajectory_files:
+        print(f"\nNo trajectory files found in: {args.trajectory_dir}")
+        print("Run exploration first: ./emtom/run_emtom.sh exploration")
+        sys.exit(1)
+
+    print(f"\nFound {len(trajectory_files)} trajectory file(s)")
+
+    # Process each trajectory
+    all_tasks = []
+    for traj_file in trajectory_files:
+        try:
+            trajectory = load_trajectory(traj_file)
+            tasks = generate_tasks_from_trajectory(
+                trajectory=trajectory,
+                output_dir=args.output_dir,
+                num_agents=args.num_agents,
+                max_tasks=args.max_tasks,
+            )
+            all_tasks.extend(tasks)
+
+            if args.print_tasks:
+                for i, task in enumerate(tasks, 1):
+                    print_task(task, i)
+
+        except Exception as e:
+            print(f"\n[Error] Failed to process {traj_file}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    print(f"\n{'='*60}")
+    print(f"Task Generation Complete")
+    print(f"{'='*60}")
+    print(f"Total trajectories processed: {len(trajectory_files)}")
+    print(f"Total tasks generated: {len(all_tasks)}")
+    print(f"Output directory: {args.output_dir}")
 
 
 if __name__ == "__main__":

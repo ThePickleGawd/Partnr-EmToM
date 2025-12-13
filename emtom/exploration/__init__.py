@@ -3,16 +3,10 @@
 from emtom.exploration.curiosity import (
     ActionChoice,
     CuriosityModel,
-    RandomCuriosityModel,
-    ScriptedCuriosityModel,
-    create_curiosity_model,
 )
 from emtom.exploration.surprise_detector import (
     SurpriseAssessment,
     SurpriseDetector,
-    RuleBasedSurpriseDetector,
-    HybridSurpriseDetector,
-    create_surprise_detector,
 )
 from emtom.exploration.trajectory_logger import (
     SurpriseRecord,
@@ -32,9 +26,6 @@ __all__ = [
     # Curiosity
     "ActionChoice",
     "CuriosityModel",
-    "RandomCuriosityModel",
-    "ScriptedCuriosityModel",
-    "create_curiosity_model",
     # Habitat Explorer
     "HabitatExplorationConfig",
     "HabitatExplorer",
@@ -43,9 +34,6 @@ __all__ = [
     # Surprise Detection
     "SurpriseAssessment",
     "SurpriseDetector",
-    "RuleBasedSurpriseDetector",
-    "HybridSurpriseDetector",
-    "create_surprise_detector",
     # Logging
     "SurpriseRecord",
     "StepRecord",

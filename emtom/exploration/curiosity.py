@@ -32,7 +32,28 @@ class CuriosityModel:
     about how the world works, particularly to discover unexpected behaviors.
     """
 
-    PROMPT_TEMPLATE = """You are an explorer in a text-based world. Your goal is to discover how things work, especially any unusual or unexpected behaviors.
+    PROMPT_TEMPLATE = """You are an explorer in a simulated home environment. Your goal is to discover how things work, especially any unusual or unexpected behaviors.
+
+=== MOTOR SKILLS (require navigation first) ===
+- Navigate[target]: Move to a room or furniture. You MUST navigate close to objects before interacting.
+- Pick[object]: Pick up an object. Must be near it first (Navigate to get close).
+- Open[furniture]: Open articulated furniture (cabinets, drawers, fridges). Must be near it first.
+- Close[furniture]: Close articulated furniture. Must be near it first.
+- Explore[room]: Thoroughly search a room by visiting all furniture in it.
+
+=== INTERACTION ACTIONS (can do from anywhere in a room) ===
+- FlipLights[room]: Toggle the lights in a room on/off. Might have unexpected effects!
+- PressButton[button]: Press a button or switch. May control unknown systems.
+- PullLever[lever]: Pull a lever. May activate mechanical systems.
+- TurnDial[dial]: Turn a dial/knob. May adjust settings in surprising ways.
+- Inspect[object]: Carefully examine an object to learn its properties.
+- RingBell[bell]: Ring a bell to make a sound (can be heard in adjacent rooms).
+- CheckStatus[device]: Check the current status of a device or system.
+
+WORKFLOW: To interact with objects physically, FIRST navigate to them, THEN interact.
+Example: To pick up "apple_1" on "counter_5":
+1. Navigate[counter_5]  (get close to the counter)
+2. Pick[apple_1]        (now you can pick it up)
 
 Current world state:
 {world_description}
@@ -49,15 +70,16 @@ Based on your curiosity and desire to learn about this world:
 3. Why is this action interesting?
 
 Consider:
-- Actions you haven't tried yet
-- Objects that might behave unexpectedly
-- Testing your hypotheses about how things work
-- Exploring different parts of the world
+- If a Pick/Open/Close failed with "not close enough", you need to Navigate first
+- Try FlipLights, PressButton, PullLever - they might have SURPRISING effects!
+- Objects and controls might behave unexpectedly (inverse effects, remote control, etc.)
+- Explore different rooms to find more interactive objects
+- Try Inspect on objects to learn about their properties
 
 Respond in JSON format:
 {{
     "action": "<action_name>",
-    "target": "<target_id_or_null>",
+    "target": "<target_id>",
     "expected_outcome": "<what_you_expect_to_happen>",
     "reasoning": "<why_this_action_is_interesting>",
     "confidence": <0.0_to_1.0_how_confident_in_outcome>
@@ -199,121 +221,3 @@ Respond in JSON format:
         )
 
 
-class RandomCuriosityModel:
-    """
-    Random action selection for baseline comparison.
-
-    Uniformly samples from available actions.
-    """
-
-    def __init__(self, seed: Optional[int] = None):
-        import random
-        self.rng = random.Random(seed)
-
-    def select_action(
-        self,
-        agent_id: str,
-        world_description: str,
-        available_actions: List[Dict[str, Any]],
-        exploration_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> ActionChoice:
-        """Randomly select an action."""
-        if not available_actions:
-            return ActionChoice(
-                action="wait",
-                target=None,
-                expected_outcome="Nothing happens",
-                reasoning="No actions available",
-                confidence=1.0,
-            )
-
-        action = self.rng.choice(available_actions)
-        action_name = action.get("name", action.get("action", "wait"))
-        targets = action.get("targets", [])
-        target = self.rng.choice(targets) if targets else None
-
-        return ActionChoice(
-            action=action_name,
-            target=target,
-            expected_outcome="unknown",
-            reasoning="Random selection",
-            confidence=0.5,
-        )
-
-
-class ScriptedCuriosityModel:
-    """
-    Scripted action sequence for testing.
-
-    Executes a predefined sequence of actions.
-    """
-
-    def __init__(self, action_sequence: List[Dict[str, Any]]):
-        """
-        Initialize with a sequence of actions.
-
-        Args:
-            action_sequence: List of {action, target} dicts
-        """
-        self.action_sequence = action_sequence
-        self._index = 0
-
-    def select_action(
-        self,
-        agent_id: str,
-        world_description: str,
-        available_actions: List[Dict[str, Any]],
-        exploration_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> ActionChoice:
-        """Return next action in sequence."""
-        if self._index >= len(self.action_sequence):
-            return ActionChoice(
-                action="wait",
-                target=None,
-                expected_outcome="Sequence complete",
-                reasoning="End of scripted sequence",
-                confidence=1.0,
-            )
-
-        action_info = self.action_sequence[self._index]
-        self._index += 1
-
-        return ActionChoice(
-            action=action_info.get("action", "wait"),
-            target=action_info.get("target"),
-            expected_outcome=action_info.get("expected", "scripted"),
-            reasoning="Scripted action",
-            confidence=1.0,
-        )
-
-    def reset(self):
-        """Reset sequence to beginning."""
-        self._index = 0
-
-
-def create_curiosity_model(
-    model_type: str = "llm",
-    llm_client: Any = None,
-    **kwargs,
-) -> CuriosityModel:
-    """
-    Factory function to create curiosity models.
-
-    Args:
-        model_type: "llm", "random", or "scripted"
-        llm_client: LLM client (required for "llm" type)
-        **kwargs: Additional arguments for the model
-
-    Returns:
-        Curiosity model instance
-    """
-    if model_type == "llm":
-        if llm_client is None:
-            raise ValueError("llm_client required for LLM curiosity model")
-        return CuriosityModel(llm_client, **kwargs)
-    elif model_type == "random":
-        return RandomCuriosityModel(**kwargs)
-    elif model_type == "scripted":
-        return ScriptedCuriosityModel(**kwargs)
-    else:
-        raise ValueError(f"Unknown curiosity model type: {model_type}")

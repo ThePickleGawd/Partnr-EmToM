@@ -27,13 +27,10 @@ from emtom.core.mechanic import (
     SceneAwareMechanic,
     create_default_effect,
 )
-from emtom.exploration.curiosity import ActionChoice, CuriosityModel, RandomCuriosityModel
-from emtom.exploration.surprise_detector import (
-    SurpriseAssessment,
-    SurpriseDetector,
-    RuleBasedSurpriseDetector,
-)
+from emtom.exploration.curiosity import ActionChoice, CuriosityModel
+from emtom.exploration.surprise_detector import SurpriseAssessment, SurpriseDetector
 from emtom.exploration.trajectory_logger import SurpriseRecord, TrajectoryLogger
+from emtom.actions.custom_actions import EMTOMActionExecutor, EMTOM_ACTIONS
 
 if TYPE_CHECKING:
     from habitat_llm.agent.env import EnvironmentInterface
@@ -215,8 +212,8 @@ class HabitatExplorer:
         self,
         env_interface: "EnvironmentInterface",
         mechanics: List[Mechanic],
-        curiosity_model: Union[CuriosityModel, RandomCuriosityModel],
-        surprise_detector: Union[SurpriseDetector, RuleBasedSurpriseDetector],
+        curiosity_model: CuriosityModel,
+        surprise_detector: SurpriseDetector,
         agent: Optional["Agent"] = None,
         config: Optional[HabitatExplorationConfig] = None,
     ):
@@ -226,8 +223,8 @@ class HabitatExplorer:
         Args:
             env_interface: Habitat EnvironmentInterface
             mechanics: List of mechanics to apply
-            curiosity_model: Model for action selection
-            surprise_detector: Model for surprise detection
+            curiosity_model: LLM-based model for action selection
+            surprise_detector: LLM-based model for surprise detection
             agent: Partnr Agent with tools (if None, tools accessed directly from env)
             config: Exploration configuration
         """
@@ -237,6 +234,9 @@ class HabitatExplorer:
         self.surprise_detector = surprise_detector
         self.agent = agent
         self.config = config or HabitatExplorationConfig()
+
+        # Custom EMTOM action executor
+        self.custom_action_executor = EMTOMActionExecutor(env_interface, mechanics)
 
         # World adapter for mechanics
         self.world_adapter = HabitatWorldAdapter(env_interface, agent_uid=0)
@@ -536,14 +536,23 @@ class HabitatExplorer:
 
     def _get_available_actions(self, agent_id: str) -> List[Dict[str, Any]]:
         """
-        Get available actions based on Habitat environment and partnr tools.
+        Get available actions based on Habitat environment, partnr tools, and custom EMTOM actions.
 
-        Uses partnr tool names that match the actual skill implementations:
+        Partnr tools (motor skills):
         - Navigate: OracleNavSkill - go to rooms, furniture, objects
         - Open: OracleOpenSkill - open articulated furniture
         - Close: OracleCloseSkill - close articulated furniture
         - Pick: OraclePickSkill - pick up objects
         - Explore: OracleExploreSkill - explore a room
+
+        Custom EMTOM actions:
+        - FlipLights: Toggle lights in a room
+        - PressButton: Press buttons/switches
+        - PullLever: Pull levers
+        - TurnDial: Turn dials/knobs
+        - Inspect: Examine objects closely
+        - RingBell: Ring bells (signals other agents)
+        - CheckStatus: Check device status
         """
         actions = []
 
@@ -554,6 +563,8 @@ class HabitatExplorer:
         furniture = [e for e in entities if e["type"] == "furniture"]
         articulated = [f for f in furniture if f.get("is_articulated")]
         objects = [e for e in entities if e["type"] == "object"]
+
+        # ===== Partnr Motor Skills =====
 
         # Navigate - can go to rooms or furniture
         nav_targets = []
@@ -600,26 +611,65 @@ class HabitatExplorer:
                 "targets": pick_targets,
             })
 
+        # ===== Custom EMTOM Actions =====
+        # Build world state dict for custom action target discovery
+        world_state = self._build_world_state_for_actions(agent_id, rooms, entities)
+
+        # Get custom actions with their available targets
+        custom_actions = self.custom_action_executor.get_available_actions(world_state)
+        actions.extend(custom_actions)
+
         return actions
+
+    def _build_world_state_for_actions(
+        self,
+        agent_id: str,
+        rooms: List[str],
+        entities: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Build world state dict for custom EMTOM actions."""
+        return {
+            "agent_location": self.world_adapter.get_agent_location(agent_id),
+            "rooms": rooms,
+            "entities": entities,
+            "entity_details": {
+                e["name"]: {
+                    "properties": e.get("properties", {}),
+                    "states": e.get("states", {}),
+                }
+                for e in entities
+            },
+            "room_lights": {},  # TODO: Track light states if needed
+            "lever_states": {},  # TODO: Track lever states if needed
+            "dial_values": {},  # TODO: Track dial values if needed
+            "other_agents": [
+                aid for aid in self.config.agent_ids if aid != agent_id
+            ],
+        }
 
     def _execute_action(
         self, agent_id: str, action_choice: ActionChoice
     ) -> ActionResult:
         """
-        Execute an action in the Habitat environment using partnr tools.
+        Execute an action in the Habitat environment.
 
-        This method:
-        1. Gets the partnr tool for the action
-        2. Executes it via agent.process_high_level_action() to get low-level actions
-        3. Steps the environment with those actions until the skill completes
-        4. Returns the result
+        Handles two types of actions:
+        1. Partnr tools (Navigate, Open, Close, Pick, Explore) - executed via agent
+        2. Custom EMTOM actions (FlipLights, PressButton, etc.) - executed via custom executor
+
+        Returns:
+            ActionResult with observations and effects
         """
         action_name = action_choice.action
         target = action_choice.target or ""
 
         print(f"  Executing: {action_name}[{target}]")
 
-        # Check if we have an agent with tools
+        # Check if this is a custom EMTOM action
+        if action_name in EMTOM_ACTIONS:
+            return self._execute_custom_action(agent_id, action_name, target)
+
+        # Otherwise, execute via partnr tools
         if self.agent is None:
             return self._execute_action_direct(agent_id, action_name, target)
 
@@ -718,6 +768,60 @@ class HabitatExplorer:
         return ActionResult(
             success=False,
             observations={agent_id: f"No agent configured. Cannot execute {action_name}[{target}]."},
+        )
+
+    def _execute_custom_action(
+        self, agent_id: str, action_name: str, target: str
+    ) -> ActionResult:
+        """
+        Execute a custom EMTOM action.
+
+        Custom actions are simulated interactions (FlipLights, PressButton, etc.)
+        that can be affected by mechanics to produce surprising outcomes.
+        """
+        print(f"    [Custom EMTOM action: {action_name}]")
+
+        # Build world state for the action
+        entities = self.world_adapter.get_interactable_entities()
+        rooms = self.world_adapter.get_room_ids()
+        world_state = self._build_world_state_for_actions(agent_id, rooms, entities)
+
+        # Execute via custom action executor (applies mechanics automatically)
+        from emtom.actions.custom_actions import ActionResult as CustomActionResult
+        custom_result = self.custom_action_executor.execute(
+            action_name, agent_id, target, world_state
+        )
+
+        # Convert custom ActionResult to mechanic ActionResult
+        observation = custom_result.observation
+        effects = []
+
+        if custom_result.effect:
+            effects.append(Effect(
+                target=target or "world",
+                property_changed=action_name.lower(),
+                old_value=None,
+                new_value=custom_result.effect,
+                visible_to={agent_id},
+            ))
+
+        # Build observations dict
+        observations = {agent_id: observation}
+        if custom_result.other_observations:
+            observations.update(custom_result.other_observations)
+
+        # Build surprise triggers
+        surprise_triggers = {}
+        if custom_result.surprise_trigger:
+            surprise_triggers[agent_id] = custom_result.surprise_trigger
+
+        print(f"    Result: {observation[:80]}..." if len(observation) > 80 else f"    Result: {observation}")
+
+        return ActionResult(
+            success=custom_result.success,
+            observations=observations,
+            effects=effects,
+            surprise_triggers=surprise_triggers,
         )
 
     def _check_mechanics(
