@@ -776,10 +776,17 @@ class HabitatExplorer:
         """
         Execute a custom EMTOM action.
 
-        Custom actions are simulated interactions (FlipLights, PressButton, etc.)
+        Custom actions are simulated interactions (Hide, Inspect, WriteMessage, etc.)
         that can be affected by mechanics to produce surprising outcomes.
         """
         print(f"    [Custom EMTOM action: {action_name}]")
+
+        # Record frame with the custom action for video
+        obs = self.env.get_observations()
+        parsed_obs = self.env.parse_observations(obs)
+        # Use agent index 0 for video display
+        agent_idx = int(agent_id.split("_")[-1]) if "_" in agent_id else 0
+        self._record_frame(parsed_obs, {agent_idx: (action_name, target or "")})
 
         # Build world state for the action
         entities = self.world_adapter.get_interactable_entities()

@@ -58,6 +58,7 @@ def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
         RemoteControlMechanic,
         CountingStateMechanic,
     )
+    from emtom.tools import get_emtom_tools
     from habitat_llm.agent import Agent
 
     # Get output directory from config
@@ -101,7 +102,18 @@ def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
                 agent_conf=agent_conf.config,
                 env_interface=env_interface,
             )
-            print(f"  Tools available: {list(agent.tools.keys())}")
+            print(f"  partnr tools: {list(agent.tools.keys())}")
+
+            # Inject EMTOM tools into the agent
+            print("\n  Injecting EMTOM tools...")
+            agent_uid = agent_conf.get('uid', 0)
+            emtom_tools = get_emtom_tools(agent_uid=agent_uid)
+            for tool_name, tool in emtom_tools.items():
+                tool.set_environment(env_interface)
+                agent.tools[tool_name] = tool
+                print(f"    Added {tool_name}")
+
+            print(f"  All tools available: {list(agent.tools.keys())}")
         except Exception as e:
             print(f"  Failed to create agent: {e}")
             agent = None

@@ -42,6 +42,7 @@ from habitat_llm.evaluation import DecentralizedEvaluationRunner
 from habitat_llm.utils import cprint, setup_config, fix_config
 
 from emtom.task_gen import GeneratedTask
+from emtom.tools import get_emtom_tools
 
 # Import mechanics
 from emtom.mechanics import (
@@ -122,8 +123,21 @@ def main(config: DictConfig) -> None:
     eval_runner = DecentralizedEvaluationRunner(config.evaluation, env_interface)
     cprint(f"Evaluation runner created: {eval_runner}", "green")
 
+    # Inject EMTOM tools into each agent
+    cprint("\nInjecting EMTOM tools into agents...", "blue")
+    for agent in eval_runner.agents:
+        agent_uid = agent.uid
+        emtom_tools = get_emtom_tools(agent_uid=agent_uid)
+
+        for tool_name, tool in emtom_tools.items():
+            tool.set_environment(env_interface)
+            agent.tools[tool_name] = tool
+            cprint(f"  Added {tool_name} to agent_{agent_uid}", "green")
+
     # Print agent info
     cprint(f"\nAgents: {eval_runner.agent_list}", "blue")
+    for agent in eval_runner.agents:
+        cprint(f"  agent_{agent.uid} tools: {list(agent.tools.keys())}", "blue")
 
     # Setup output directory
     output_dir = config.paths.results_dir

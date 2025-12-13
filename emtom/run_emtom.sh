@@ -46,10 +46,12 @@ run_exploration() {
     echo ""
 
     # Use Hydra config system - pass parameters as config overrides
+    # Override output dir to include "exploration" in the name
     python emtom/examples/run_habitat_exploration.py \
         --config-name examples/planner_multi_agent_demo_config \
         +exploration_steps=$EXPLORATION_STEPS \
-        evaluation.save_video=true
+        evaluation.save_video=true \
+        "hydra.run.dir=./outputs/emtom/\${now:%Y-%m-%d_%H-%M-%S}-exploration"
 }
 
 run_generate() {
@@ -71,11 +73,13 @@ run_benchmark() {
     echo "Max LLM calls per agent: $MAX_LLM_CALLS"
     echo "=============================================="
 
+    # Override output dir to include "benchmark" in the name
     python emtom/examples/run_habitat_benchmark.py \
         --config-name examples/emtom_two_robots \
         habitat.environment.max_episode_steps=$MAX_SIM_STEPS \
         evaluation.agents.agent_0.planner.plan_config.replanning_threshold=$MAX_LLM_CALLS \
-        evaluation.agents.agent_1.planner.plan_config.replanning_threshold=$MAX_LLM_CALLS
+        evaluation.agents.agent_1.planner.plan_config.replanning_threshold=$MAX_LLM_CALLS \
+        "hydra.run.dir=./outputs/emtom/\${now:%Y-%m-%d_%H-%M-%S}-benchmark"
 }
 
 run_all() {
