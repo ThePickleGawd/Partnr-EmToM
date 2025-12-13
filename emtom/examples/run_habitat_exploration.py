@@ -139,6 +139,11 @@ def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
     llm_client = instantiate_llm("openai_chat")
     print(f"  Using model: {llm_client.generation_params.model}")
 
+    # Pass LLM to agent tools (required for perception tools like FindObjectTool)
+    if agent is not None:
+        print("  Passing LLM to agent tools...")
+        agent.pass_llm_to_tools(llm_client)
+
     # Setup curiosity model (LLM-based) with YAML config
     print("\nSetting up curiosity model...")
     from emtom.exploration.surprise_detector import SurpriseDetector
