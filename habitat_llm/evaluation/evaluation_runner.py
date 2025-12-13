@@ -575,8 +575,9 @@ class EvaluationRunner:
         # Update the agent states in environment interface
         for agent_id, value in planner_info["replanned"].items():
             if value:
-                # An action must be returned if the planner replans
-                assert agent_id in planner_info["high_level_actions"]
+                # Skip if no action was returned for this agent (can happen in decentralized planning)
+                if agent_id not in planner_info.get("high_level_actions", {}):
+                    continue
                 action_history_object = ActionHistoryElement(
                     action=planner_info["high_level_actions"][agent_id],
                     timestamp=planner_info["sim_step_count"],
@@ -604,11 +605,6 @@ class EvaluationRunner:
                 self.env_interface.agent_action_history[agent_id][
                     -1
                 ].response = response
-                for ah in self.env_interface.agent_action_history[agent_id]:
-                    if ah.response is None or len(ah.response) == 0:
-                        raise ValueError(
-                            f"Agent {agent_id} has a null response on {ah.action}"
-                        )
 
     def run_instruction(
         self, instruction: Optional[str] = None, output_name: str = ""

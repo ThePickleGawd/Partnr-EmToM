@@ -7,7 +7,7 @@ _recursive_: False
 _partial_: True
 
 plan_config:
-    replanning_threshold: 25 # max number of times the LLM is allowed to plan to finish the task
+    replanning_threshold: 20 # max number of times the LLM is allowed to plan to finish the task (reduced for debugging)
     planning_mode: "cot"
     constrained_generation: False
     enable_rag: False # If we want to use RAG or not

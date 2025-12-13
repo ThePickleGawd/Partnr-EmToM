@@ -10,10 +10,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
-    from emtom.core.world_state import TextWorldState
+    from emtom.core.object_selector import ObjectSelector
+    from emtom.core.world_state import Entity, TextWorldState
 
 
 class MechanicCategory(Enum):
@@ -173,6 +174,174 @@ class Mechanic(ABC):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r}, category={self.category.value})"
+
+
+class SceneAwareMechanic(Mechanic):
+    """
+    A mechanic that discovers applicable objects at episode start.
+
+    Instead of hardcoding specific entity types like "door" or "button",
+    SceneAwareMechanics use affordance-based selection to work with
+    whatever objects exist in the current scene.
+
+    Subclasses should:
+    1. Set `required_affordance` or override `bind_to_scene()`
+    2. Store discovered targets in `bound_targets`
+    3. Use `is_bound` to check if the mechanic is active
+    """
+
+    name: str = "scene_aware_mechanic"
+    description: str = "Scene-aware mechanic - discovers targets at runtime"
+
+    # The affordance required for this mechanic (e.g., "openable", "toggleable")
+    # If None, subclass must override bind_to_scene()
+    required_affordance: Optional[str] = None
+
+    def __init__(self) -> None:
+        """Initialize scene-aware mechanic."""
+        self._is_bound: bool = False
+        self._bound_targets: List[str] = []
+        self._bound_states: Dict[str, str] = {}  # entity_id -> state_name
+        self._selector: Optional["ObjectSelector"] = None
+
+    @property
+    def is_bound(self) -> bool:
+        """Check if the mechanic has been bound to the current scene."""
+        return self._is_bound
+
+    @property
+    def bound_targets(self) -> List[str]:
+        """Get the entity IDs this mechanic is bound to."""
+        return self._bound_targets
+
+    def get_selector(self) -> "ObjectSelector":
+        """Get or create the object selector."""
+        if self._selector is None:
+            from emtom.core.object_selector import ObjectSelector
+            self._selector = ObjectSelector()
+        return self._selector
+
+    def bind_to_scene(self, world_state: "TextWorldState") -> bool:
+        """
+        Bind the mechanic to objects in the current scene.
+
+        Called at episode start. The mechanic should discover which objects
+        it can affect and store them for later use.
+
+        Args:
+            world_state: The current world state with all scene objects
+
+        Returns:
+            True if the mechanic found applicable objects and is now active,
+            False if no suitable objects exist (mechanic will be inactive)
+        """
+        if self.required_affordance is None:
+            # Subclass must override
+            return False
+
+        selector = self.get_selector()
+        candidates = selector.select_by_affordance(world_state, self.required_affordance)
+
+        if not candidates:
+            self._is_bound = False
+            self._bound_targets = []
+            return False
+
+        # Default: select all candidates
+        self._bound_targets = [e.id for e in candidates]
+        self._is_bound = True
+        return True
+
+    def bind_to_entities_with_state(
+        self,
+        world_state: "TextWorldState",
+        state_names: Optional[List[str]] = None,
+        max_targets: int = 1,
+        random_select: bool = True,
+    ) -> bool:
+        """
+        Bind to entities that have specific binary states.
+
+        Helper method for mechanics that operate on any binary state.
+
+        Args:
+            world_state: The current world state
+            state_names: List of acceptable state names, or None for any binary state
+            max_targets: Maximum number of targets to bind
+            random_select: If True, randomly select from candidates
+
+        Returns:
+            True if successfully bound to at least one target
+        """
+        from emtom.core.object_selector import BINARY_STATES, get_entity_binary_states
+        import random
+
+        selector = self.get_selector()
+        candidates_with_states = selector.select_with_binary_state(world_state)
+
+        if not candidates_with_states:
+            self._is_bound = False
+            return False
+
+        # Filter by allowed state names if specified
+        valid_candidates: List[Tuple["Entity", List[str]]] = []
+        for entity, entity_states in candidates_with_states:
+            if state_names is None:
+                valid_states = entity_states
+            else:
+                valid_states = [s for s in entity_states if s in state_names]
+
+            if valid_states:
+                valid_candidates.append((entity, valid_states))
+
+        if not valid_candidates:
+            self._is_bound = False
+            return False
+
+        # Select targets
+        if random_select and len(valid_candidates) > max_targets:
+            selected = random.sample(valid_candidates, max_targets)
+        else:
+            selected = valid_candidates[:max_targets]
+
+        self._bound_targets = []
+        self._bound_states = {}
+
+        for entity, states in selected:
+            self._bound_targets.append(entity.id)
+            # Pick a random state from available states for this entity
+            self._bound_states[entity.id] = random.choice(states) if random_select else states[0]
+
+        self._is_bound = True
+        return True
+
+    def applies_to(
+        self, action_name: str, target: str, world_state: "TextWorldState"
+    ) -> bool:
+        """
+        Check if this mechanic applies to the given action.
+
+        By default, applies to any action on bound targets.
+        """
+        if not self._is_bound:
+            return False
+        return target in self._bound_targets
+
+    def reset(self) -> None:
+        """Reset mechanic state including bindings."""
+        super().reset()
+        self._is_bound = False
+        self._bound_targets = []
+        self._bound_states = {}
+
+    def get_hidden_state_for_debug(self) -> Dict[str, Any]:
+        """Return hidden state for debugging."""
+        return {
+            "is_bound": self._is_bound,
+            "bound_targets": self._bound_targets,
+            "bound_states": self._bound_states,
+            "required_affordance": self.required_affordance,
+        }
 
 
 def create_default_effect(

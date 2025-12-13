@@ -1,0 +1,1 @@
+- gpt-5 and gpt-5-mini are valid models

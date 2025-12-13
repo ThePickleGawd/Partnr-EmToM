@@ -88,6 +88,7 @@ class TrajectoryLogger:
         self.current_episode: Dict[str, Any] = {}
         self.steps: List[StepRecord] = []
         self._started = False
+        self._messages: List[str] = []  # Internal messages/logs
 
     def start_episode(
         self,
@@ -119,9 +120,20 @@ class TrajectoryLogger:
             "statistics": {},
         }
         self.steps = []
+        self._messages = []
         self._started = True
 
         return episode_id
+
+    def log_message(self, message: str) -> None:
+        """
+        Log a message (for internal tracking, not agent observations).
+
+        Args:
+            message: Message to log
+        """
+        timestamped = f"[{datetime.now().isoformat()}] {message}"
+        self._messages.append(timestamped)
 
     def log_step(
         self,
@@ -250,6 +262,7 @@ class TrajectoryLogger:
         self.current_episode["surprise_summary"] = [
             s.to_dict() for s in self.get_all_surprises()
         ]
+        self.current_episode["messages"] = self._messages
         self.current_episode["statistics"] = self._compute_statistics()
 
         # Save to file

@@ -10,7 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from emtom.core.mechanic import ActionResult, Effect, Mechanic, create_default_effect
+from emtom.core.mechanic import (
+    ActionResult,
+    Effect,
+    Mechanic,
+    SceneAwareMechanic,
+    create_default_effect,
+)
 from emtom.core.world_state import TextWorldState
 from emtom.exploration.curiosity import ActionChoice, CuriosityModel, RandomCuriosityModel
 from emtom.exploration.surprise_detector import (
@@ -87,6 +93,8 @@ class ExplorationLoop:
         self.step_count = 0
         self.surprise_moments: List[SurpriseRecord] = []
         self._is_running = False
+        # Track active mechanics (those that successfully bound to the scene)
+        self._active_mechanics: List[Mechanic] = []
 
     def run(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -109,9 +117,32 @@ class ExplorationLoop:
         self._is_running = True
         self.step_count = 0
 
-        # Reset mechanics
+        # Reset and bind mechanics to the scene
+        self._active_mechanics = []
         for mechanic in self.mechanics:
             mechanic.reset()
+
+            # For scene-aware mechanics, attempt to bind to the current scene
+            if isinstance(mechanic, SceneAwareMechanic):
+                if mechanic.bind_to_scene(self.world):
+                    self._active_mechanics.append(mechanic)
+                    # Log what the mechanic bound to
+                    debug_state = mechanic.get_hidden_state_for_debug()
+                    self.logger.log_message(
+                        f"Mechanic '{mechanic.name}' bound to targets: {debug_state.get('bound_targets', [])}"
+                    )
+                else:
+                    # Mechanic couldn't find suitable objects - it stays inactive
+                    self.logger.log_message(
+                        f"Mechanic '{mechanic.name}' found no suitable objects - inactive"
+                    )
+            else:
+                # Non-scene-aware mechanics are always active
+                self._active_mechanics.append(mechanic)
+
+        # Log active mechanics
+        active_names = [m.name for m in self._active_mechanics]
+        self.logger.log_message(f"Active mechanics for this episode: {active_names}")
 
         # Main loop
         while self._is_running and self.step_count < self.config.max_steps:
@@ -246,8 +277,8 @@ class ExplorationLoop:
                 observations={agent_id: f"You don't see any '{target}' here."},
             )
 
-        # Find applicable mechanic
-        for mechanic in self.mechanics:
+        # Find applicable mechanic (only check active mechanics)
+        for mechanic in self._active_mechanics:
             if mechanic.applies_to(action_name, target, self.world):
                 # Create intended effect
                 intended = create_default_effect(action_name, target, self.world)
