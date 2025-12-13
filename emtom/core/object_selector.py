@@ -9,10 +9,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
-
-if TYPE_CHECKING:
-    from emtom.core.world_state import Entity, TextWorldState
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 # Standard affordances and their associated states

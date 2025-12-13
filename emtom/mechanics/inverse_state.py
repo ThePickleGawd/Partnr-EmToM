@@ -15,7 +15,6 @@ from emtom.core.mechanic import (
     MechanicCategory,
     SceneAwareMechanic,
 )
-from emtom.core.world_state import TextWorldState
 from emtom.mechanics.registry import register_mechanic
 
 
@@ -89,7 +88,7 @@ class InverseStateMechanic(SceneAwareMechanic):
         )
         self.max_targets = max_targets
 
-    def bind_to_scene(self, world_state: TextWorldState) -> bool:
+    def bind_to_scene(self, world_state: Any) -> bool:
         """
         Discover objects with binary states and select targets.
 
@@ -103,7 +102,7 @@ class InverseStateMechanic(SceneAwareMechanic):
         )
 
     def applies_to(
-        self, action_name: str, target: str, world_state: TextWorldState
+        self, action_name: str, target: str, world_state: Any
     ) -> bool:
         """Check if this mechanic should handle the action."""
         if not self._is_bound:
@@ -133,7 +132,7 @@ class InverseStateMechanic(SceneAwareMechanic):
         actor_id: str,
         target: str,
         intended_effect: Effect,
-        world_state: TextWorldState,
+        world_state: Any,
     ) -> ActionResult:
         """Transform the action to have inverse effect."""
         state_name, intended_value = STATE_ACTIONS[action_name]

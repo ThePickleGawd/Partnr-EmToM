@@ -7,12 +7,6 @@ from emtom.exploration.curiosity import (
     ScriptedCuriosityModel,
     create_curiosity_model,
 )
-from emtom.exploration.explorer import (
-    ExplorationConfig,
-    ExplorationLoop,
-    StepResult,
-    run_exploration,
-)
 from emtom.exploration.surprise_detector import (
     SurpriseAssessment,
     SurpriseDetector,
@@ -26,6 +20,14 @@ from emtom.exploration.trajectory_logger import (
     TrajectoryLogger,
 )
 
+# Habitat-integrated exploration
+from emtom.exploration.habitat_explorer import (
+    HabitatExplorationConfig,
+    HabitatExplorer,
+    HabitatWorldAdapter,
+    HabitatStepResult,
+)
+
 __all__ = [
     # Curiosity
     "ActionChoice",
@@ -33,11 +35,11 @@ __all__ = [
     "RandomCuriosityModel",
     "ScriptedCuriosityModel",
     "create_curiosity_model",
-    # Explorer
-    "ExplorationConfig",
-    "ExplorationLoop",
-    "StepResult",
-    "run_exploration",
+    # Habitat Explorer
+    "HabitatExplorationConfig",
+    "HabitatExplorer",
+    "HabitatWorldAdapter",
+    "HabitatStepResult",
     # Surprise Detection
     "SurpriseAssessment",
     "SurpriseDetector",

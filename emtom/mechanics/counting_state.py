@@ -16,7 +16,6 @@ from emtom.core.mechanic import (
     MechanicCategory,
     SceneAwareMechanic,
 )
-from emtom.core.world_state import TextWorldState
 from emtom.mechanics.registry import register_mechanic
 
 
@@ -91,7 +90,7 @@ class CountingStateMechanic(SceneAwareMechanic):
         # Track which targets have been "activated" (changed state)
         self._state_changed: Dict[str, Set[str]] = {}  # target -> set of states changed
 
-    def bind_to_scene(self, world_state: TextWorldState) -> bool:
+    def bind_to_scene(self, world_state: Any) -> bool:
         """
         Discover interactable objects and select targets.
 
@@ -131,7 +130,7 @@ class CountingStateMechanic(SceneAwareMechanic):
         return True
 
     def applies_to(
-        self, action_name: str, target: str, world_state: TextWorldState
+        self, action_name: str, target: str, world_state: Any
     ) -> bool:
         """Check if this mechanic should handle the action."""
         if not self._is_bound:
@@ -150,7 +149,7 @@ class CountingStateMechanic(SceneAwareMechanic):
         actor_id: str,
         target: str,
         intended_effect: Effect,
-        world_state: TextWorldState,
+        world_state: Any,
     ) -> ActionResult:
         """Transform action with counting requirement."""
         threshold = self._target_thresholds.get(target, self.required_count)

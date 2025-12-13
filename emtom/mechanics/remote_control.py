@@ -17,7 +17,6 @@ from emtom.core.mechanic import (
     SceneAwareMechanic,
 )
 from emtom.core.object_selector import BINARY_STATES
-from emtom.core.world_state import Entity, TextWorldState
 from emtom.mechanics.registry import register_mechanic
 
 
@@ -81,7 +80,7 @@ class RemoteControlMechanic(SceneAwareMechanic):
         # Track which agents have discovered which mappings
         self._discovered: Dict[str, Set[str]] = {}
 
-    def bind_to_scene(self, world_state: TextWorldState) -> bool:
+    def bind_to_scene(self, world_state: Any) -> bool:
         """
         Discover objects and create random control mappings.
 
@@ -146,7 +145,7 @@ class RemoteControlMechanic(SceneAwareMechanic):
         return True
 
     def applies_to(
-        self, action_name: str, target: str, world_state: TextWorldState
+        self, action_name: str, target: str, world_state: Any
     ) -> bool:
         """Check if this mechanic should handle the action."""
         if not self._is_bound:
@@ -165,7 +164,7 @@ class RemoteControlMechanic(SceneAwareMechanic):
         actor_id: str,
         target: str,
         intended_effect: Effect,
-        world_state: TextWorldState,
+        world_state: Any,
     ) -> ActionResult:
         """Transform the action to also affect a remote object."""
         mapping = self._mappings.get(target)
@@ -270,7 +269,7 @@ class RemoteControlMechanic(SceneAwareMechanic):
         return f"{state_name}={value}"
 
     def _get_observers_in_location(
-        self, location: Optional[str], world_state: TextWorldState
+        self, location: Optional[str], world_state: Any
     ) -> Set[str]:
         """Get IDs of agents who can observe changes in a location."""
         if location is None:
@@ -279,7 +278,7 @@ class RemoteControlMechanic(SceneAwareMechanic):
         return {a.id for a in agents if a.location == location}
 
     def _get_agents_in_location(
-        self, location: Optional[str], world_state: TextWorldState
+        self, location: Optional[str], world_state: Any
     ) -> List[str]:
         """Get list of agent IDs in a location."""
         if location is None:

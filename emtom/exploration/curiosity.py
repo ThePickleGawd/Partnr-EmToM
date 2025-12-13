@@ -66,7 +66,6 @@ Respond in JSON format:
     def __init__(
         self,
         llm_client: Any,
-        temperature: float = 0.7,
         exploration_bonus: float = 0.3,
     ):
         """
@@ -78,7 +77,6 @@ Respond in JSON format:
             exploration_bonus: Bonus for trying new actions (not yet used)
         """
         self.llm = llm_client
-        self.temperature = temperature
         self.exploration_bonus = exploration_bonus
 
     def select_action(
@@ -108,7 +106,6 @@ Respond in JSON format:
 
         response = self.llm.generate(
             prompt,
-            temperature=self.temperature,
         )
 
         return self._parse_response(response, available_actions)

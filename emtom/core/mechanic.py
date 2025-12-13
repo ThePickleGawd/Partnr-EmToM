@@ -10,11 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
-
-if TYPE_CHECKING:
-    from emtom.core.object_selector import ObjectSelector
-    from emtom.core.world_state import Entity, TextWorldState
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class MechanicCategory(Enum):

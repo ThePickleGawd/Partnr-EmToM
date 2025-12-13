@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+# isort: skip_file
+"""
+Run EMTOM exploration using the Habitat simulator backend.
+
+This script runs exploration in the actual Habitat environment, ensuring
+the action space and objects match what will be used in benchmark evaluation.
+Videos are generated showing the exploration process.
+
+Usage:
+    python run_habitat_exploration.py --steps 50
+    python run_habitat_exploration.py evaluation.save_video=true
+"""
+
+import os
+import sys
+import time
+from pathlib import Path
+
+# Add project root to path (handles running from any directory)
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+import hydra
+from omegaconf import OmegaConf
+
+from habitat_llm.utils import cprint, setup_config, fix_config
+from habitat_llm.agent.env import (
+    EnvironmentInterface,
+    register_actions,
+    register_measures,
+    register_sensors,
+)
+from habitat_llm.agent.env.dataset import CollaborationDatasetV0
+
+
+def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed=42):
+    """
+    Run the exploration loop with the given environment.
+
+    Args:
+        env_interface: Initialized EnvironmentInterface
+        config: Hydra config
+        max_steps: Maximum exploration steps
+        use_llm: Use LLM-guided exploration (vs random)
+        seed: Random seed
+    """
+    from emtom.exploration.habitat_explorer import (
+        HabitatExplorer,
+        HabitatExplorationConfig,
+    )
+    from emtom.exploration.curiosity import (
+        CuriosityModel,
+        RandomCuriosityModel,
+    )
+    from emtom.exploration.surprise_detector import RuleBasedSurpriseDetector
+    from emtom.mechanics import (
+        InverseStateMechanic,
+        RemoteControlMechanic,
+        CountingStateMechanic,
+    )
+    from habitat_llm.agent import Agent
+
+    # Get output directory from config
+    output_dir = config.paths.results_dir if hasattr(config, 'paths') else "outputs/emtom/exploration"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get scene info
+    current_episode = env_interface.env.env.env._env.current_episode
+    scene_id = getattr(current_episode, 'scene_id', "unknown")
+    episode_id = getattr(current_episode, 'episode_id', "unknown")
+
+    print(f"Scene: {scene_id}")
+    print(f"Episode: {episode_id}")
+    print(f"Output: {output_dir}")
+
+    # Create Agent with partnr tools
+    print("\nCreating Agent with partnr tools...")
+    agent = None
+
+    # Try to find agent config in various locations
+    agent_conf = None
+
+    # Check config.agents (from root config)
+    if hasattr(config, 'agents') and config.agents:
+        agent_list = list(config.agents.values())
+        if agent_list:
+            agent_conf = agent_list[0]
+            print(f"  Found agent config in config.agents")
+
+    # Check config.evaluation.agents (from evaluation config)
+    elif hasattr(config, 'evaluation') and hasattr(config.evaluation, 'agents') and config.evaluation.agents:
+        agent_list = list(config.evaluation.agents.values())
+        if agent_list:
+            agent_conf = agent_list[0]
+            print(f"  Found agent config in config.evaluation.agents")
+
+    if agent_conf and hasattr(agent_conf, 'config'):
+        try:
+            agent = Agent(
+                uid=agent_conf.get('uid', 0),
+                agent_conf=agent_conf.config,
+                env_interface=env_interface,
+            )
+            print(f"  Tools available: {list(agent.tools.keys())}")
+        except Exception as e:
+            print(f"  Failed to create agent: {e}")
+            agent = None
+    else:
+        print("  WARNING: No agent config found - tools will not be available")
+        print(f"  config.agents exists: {hasattr(config, 'agents')}")
+        if hasattr(config, 'agents'):
+            print(f"  config.agents keys: {list(config.agents.keys()) if config.agents else 'empty'}")
+
+    # Setup mechanics
+    print("\nSetting up mechanics...")
+    mechanics = [
+        InverseStateMechanic(max_targets=2),
+        RemoteControlMechanic(num_mappings=2),
+        CountingStateMechanic(required_count=3, max_targets=2),
+    ]
+    for m in mechanics:
+        print(f"  - {m.name}: {m.description}")
+
+    # Setup curiosity model
+    print("\nSetting up curiosity model...")
+    if use_llm:
+        try:
+            from habitat_llm.llm import instantiate_llm
+            llm_client = instantiate_llm("openai_chat")
+            curiosity = CuriosityModel(llm_client)
+            print(f"Using LLM-guided exploration ({llm_client.generation_params.model})")
+        except Exception as e:
+            print(f"LLM initialization failed: {e}")
+            print("Falling back to random exploration")
+            curiosity = RandomCuriosityModel(seed=seed)
+    else:
+        curiosity = RandomCuriosityModel(seed=seed)
+        print("Using random exploration")
+
+    # Setup surprise detector
+    surprise = RuleBasedSurpriseDetector()
+
+    # Check if video saving is enabled
+    save_video = True
+    if hasattr(config, 'evaluation') and hasattr(config.evaluation, 'save_video'):
+        save_video = config.evaluation.save_video
+
+    # Setup exploration config
+    exploration_config = HabitatExplorationConfig(
+        max_steps=max_steps,
+        agent_ids=["agent_0"],
+        log_path=output_dir,
+        save_video=save_video,
+        play_video=False,
+        save_fpv=True,
+    )
+
+    # Create explorer
+    print("\nCreating Habitat explorer...")
+    explorer = HabitatExplorer(
+        env_interface=env_interface,
+        mechanics=mechanics,
+        curiosity_model=curiosity,
+        surprise_detector=surprise,
+        agent=agent,
+        config=exploration_config,
+    )
+
+    # Run exploration
+    print(f"\nRunning exploration for {max_steps} steps...")
+    print("-" * 40)
+
+    metadata = {
+        "seed": seed,
+        "mode": "llm" if use_llm else "random",
+        "scene_id": scene_id,
+        "episode_id": episode_id,
+    }
+
+    episode_data = explorer.run(metadata=metadata)
+
+    # Print results
+    print("\n" + "=" * 60)
+    print("EXPLORATION RESULTS")
+    print("=" * 60)
+
+    stats = episode_data.get("statistics", {})
+    print(f"Total steps: {stats.get('total_steps', 'N/A')}")
+    print(f"Total surprises: {stats.get('total_surprises', 0)}")
+    print(f"Actions per agent: {stats.get('actions_per_agent', {})}")
+    print(f"Unique actions: {stats.get('unique_actions', 0)}")
+
+    # Print messages (mechanic binding info)
+    if episode_data.get("messages"):
+        print("\nMechanic binding info:")
+        for msg in episode_data["messages"][:10]:
+            print(f"  {msg}")
+
+    # Print surprises
+    if episode_data.get("surprise_summary"):
+        print("\nSurprise moments:")
+        for s in episode_data["surprise_summary"]:
+            print(f"  Step {s['step']}: {s['action']} on {s['target']}")
+            print(f"    Level: {s['surprise_level']}/5")
+            print(f"    {s['explanation']}")
+
+    # Print video paths
+    if episode_data.get("video_paths"):
+        print("\nSaved videos:")
+        for name, path in episode_data["video_paths"].items():
+            print(f"  {name}: {path}")
+
+    # Print trajectory path
+    trajectory_file = f"{output_dir}/trajectory_{episode_data['episode_id']}.json"
+    print(f"\nTrajectory saved to: {trajectory_file}")
+
+    return episode_data
+
+
+@hydra.main(config_path="../../habitat_llm/conf", version_base=None)
+def main(config):
+    """Main entry point with Hydra configuration."""
+    print("=" * 60)
+    print("EMTOM Habitat Exploration")
+    print("=" * 60)
+
+    # Fix and setup config
+    fix_config(config)
+    seed = 47668090
+    config = setup_config(config, seed)
+
+    # Get exploration parameters from config or defaults
+    max_steps = config.get("exploration_steps", 50)
+    use_llm = config.get("use_llm", True)
+
+    # Register Habitat components
+    print("Registering Habitat components...")
+    register_sensors(config)
+    register_actions(config)
+    register_measures(config)
+
+    # Create dataset if needed
+    dataset = None
+    if hasattr(config.habitat, 'dataset'):
+        try:
+            dataset = CollaborationDatasetV0(config.habitat.dataset)
+        except Exception as e:
+            print(f"Warning: Could not load dataset: {e}")
+
+    # Create environment interface
+    print("Creating environment...")
+    env_interface = EnvironmentInterface(config, dataset=dataset)
+
+    # Run exploration
+    t0 = time.time()
+    try:
+        episode_data = run_exploration_loop(
+            env_interface=env_interface,
+            config=config,
+            max_steps=max_steps,
+            use_llm=use_llm,
+            seed=seed,
+        )
+    except Exception as e:
+        print(f"Exploration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    elapsed = time.time() - t0
+    print(f"\nExploration completed in {elapsed:.1f}s")
+
+
+if __name__ == "__main__":
+    main()
