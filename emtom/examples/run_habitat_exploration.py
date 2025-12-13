@@ -139,11 +139,19 @@ def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
     llm_client = instantiate_llm("openai_chat")
     print(f"  Using model: {llm_client.generation_params.model}")
 
-    # Setup curiosity model (LLM-based)
+    # Setup curiosity model (LLM-based) with YAML config
     print("\nSetting up curiosity model...")
     from emtom.exploration.surprise_detector import SurpriseDetector
-    curiosity = CuriosityModel(llm_client)
-    print("  LLM-guided exploration enabled")
+
+    # Get LLM config for tags (if available from planner config)
+    llm_config = None
+    if hasattr(config, 'evaluation') and hasattr(config.evaluation, 'agents'):
+        agent_list = list(config.evaluation.agents.values())
+        if agent_list and hasattr(agent_list[0], 'planner') and hasattr(agent_list[0].planner, 'llm'):
+            llm_config = agent_list[0].planner.llm
+
+    curiosity = CuriosityModel(llm_client, llm_config=llm_config)
+    print("  LLM-guided exploration enabled (using YAML config)")
 
     # Setup surprise detector (LLM-based)
     print("\nSetting up surprise detector...")

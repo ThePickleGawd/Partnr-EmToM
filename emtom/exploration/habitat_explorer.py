@@ -262,6 +262,12 @@ class HabitatExplorer:
         self._current_skill_steps = 0
         self._max_skill_steps = 500  # Max steps per skill execution
 
+        # Cache tool descriptions from agent (for curiosity model)
+        self._tool_descriptions: Optional[str] = None
+        if agent and hasattr(agent, 'tool_descriptions'):
+            self._tool_descriptions = agent.tool_descriptions
+            self.curiosity.set_tool_descriptions(self._tool_descriptions)
+
     def _setup_video_recording(self) -> None:
         """Initialize video recording utilities."""
         if not self.config.save_video:
@@ -435,13 +441,14 @@ class HabitatExplorer:
             location = self.world_adapter.get_agent_location(agent_id)
             print(f"  Location: {location or 'unknown'}")
 
-            # Select action via curiosity model
+            # Select action via curiosity model (with tool descriptions from agent)
             print(f"  Selecting action...")
             action_choice = self.curiosity.select_action(
                 agent_id=agent_id,
                 world_description=world_text,
                 available_actions=available_actions,
                 exploration_history=recent_history,
+                tool_descriptions=self._tool_descriptions,
             )
             agent_actions[agent_id] = action_choice
 

@@ -57,11 +57,11 @@ prompt: |-
         Example 2:
         Task: Coordinate with your teammate so that whoever sees the blue mug moves it to the living-room shelf.
         Thought: I'll ask my teammate if they have seen the blue mug yet.
-        Agent_{id}_Action: CommunicationTool[Have you already found the blue mug?]
+        Agent_{id}_Action: Communicate[Have you already found the blue mug?]
         Assigned!
         {eot_tag}
         {user_tag}
-        Agent_{id}_Observation: Message sent to teammate: "Have you already found the blue mug?"
+        Agent_{id}_Observation: Message delivered. Your teammate will see your message in their context.
         {eot_tag}
         {assistant_tag}
         Thought: While waiting for a reply I'll explore the kitchen.
@@ -73,11 +73,11 @@ prompt: |-
         {eot_tag}
         {assistant_tag}
         Thought: I'll tell my teammate I found it.
-        Agent_{id}_Action: CommunicationTool[I found the blue mug on counter_1. Should I move it?]
+        Agent_{id}_Action: Communicate[I found the blue mug on counter_1. Should I move it?]
         Assigned!
         {eot_tag}
         {user_tag}
-        Agent_{id}_Observation: Message sent to teammate: "I found the blue mug on counter_1. Should I move it?"
+        Agent_{id}_Observation: Message delivered. Your teammate will see your message in their context.
         {eot_tag}
         {assistant_tag}
         Thought: The teammate asked me to move it, so I need the living-room shelf name.
@@ -106,7 +106,7 @@ prompt: |-
         Example 3:
         Task: Pick a random number, share it with your teammate, and let the higher number navigate to the bathroom.
         Thought: I'll draw a number and tell my teammate so we can compare.
-        Agent_{id}_Action: CommunicationTool[I pick 6. What number did you get?]
+        Agent_{id}_Action: Communicate[I pick 6. What number did you get?]
         Assigned!
         {eot_tag}
         {user_tag}
@@ -114,7 +114,7 @@ prompt: |-
         {eot_tag}
         {assistant_tag}
         Thought: The teammate responded with their number, so I know who should go.
-        Agent_{id}_Action: CommunicationTool[You picked the higher number. Please navigate to the bathroom.]
+        Agent_{id}_Action: Communicate[You picked the higher number. Please navigate to the bathroom.]
         Assigned!
         {eot_tag}
         {user_tag}
@@ -138,7 +138,7 @@ prompt: |-
         {eot_tag}
         {assistant_tag}
         Thought: Since I'm now inside the bathroom, I'll notify my teammate that I've arrived.
-        Agent_{id}_Action: CommunicationTool[Arrived at bathroom_1!]
+        Agent_{id}_Action: Communicate[Arrived at bathroom_1!]
         Assigned!
         {eot_tag}
         {user_tag}

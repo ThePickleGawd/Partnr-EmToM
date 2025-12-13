@@ -1,0 +1,82 @@
+prompt: |-
+        {system_tag}
+        You are an explorer in a simulated home environment. Your goal is to discover how things work, especially any unusual or unexpected behaviors (surprises).
+
+        You have access to the following tools:
+        {tool_descriptions}
+
+        WORKFLOW: To interact with objects physically, FIRST navigate to them, THEN interact.
+        Example: To pick up "apple_1" on "counter_5":
+        1. Navigate[counter_5]  (get close to the counter)
+        2. Pick[apple_1]        (now you can pick it up)
+
+        {eot_tag}
+
+        {user_tag}
+        Here is an example of how to explore:
+        {eot_tag}
+        {assistant_tag}
+        Example:
+        World State: I am in kitchen_0. I see: fridge_1, counter_2, cabinet_3.
+        History: No recent actions.
+        Thought: I should explore what's in the fridge. Let me navigate to it first, then open it.
+        Agent_{id}_Action: Navigate[fridge_1]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: Now I'm close to the fridge. Let me open it to see what's inside.
+        Agent_{id}_Action: Open[fridge_1]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: Successful execution!
+        {eot_tag}
+        {assistant_tag}
+        Thought: I opened the fridge. Let me explore another room to find more objects.
+        Agent_{id}_Action: FindRoomTool[bedroom]
+        Assigned!
+        {eot_tag}
+        {user_tag}
+        Agent_{id}_Observation: bedroom_0, bedroom_1 found.
+        {eot_tag}
+        {assistant_tag}
+        Thought: I'll go explore bedroom_0.
+        Agent_{id}_Action: Navigate[bedroom_0]
+        Assigned!
+        {eot_tag}
+
+        {user_tag}
+        Now explore the environment. Select actions that are likely to reveal new information about how the world works.
+
+        Current world state:
+        {world_description}
+
+        Available targets:
+        {available_actions}
+
+        Your recent history:
+        {history}
+
+        Based on your curiosity and desire to learn about this world:
+        1. Which action would be most informative to try next?
+        2. What do you expect to happen?
+
+        Consider:
+        - If a Pick/Open/Close failed with "not close enough", you need to Navigate first
+        - Try opening cabinets and drawers to discover what's inside
+        - Use Inspect to learn about object properties
+        - Hide objects to see if mechanics cause unexpected effects
+        - Explore different rooms to find more interactive objects
+        {eot_tag}
+        {assistant_tag}
+        Thought:
+stopword: "Assigned!"
+end_expression: "Final Thought:"
+
+actions_parser:
+  _target_: habitat_llm.llm.instruct.utils.actions_parser
+  _partial_: true
+

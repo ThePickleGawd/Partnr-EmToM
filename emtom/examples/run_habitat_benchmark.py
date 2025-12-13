@@ -44,6 +44,10 @@ from habitat_llm.utils import cprint, setup_config, fix_config
 from emtom.task_gen import GeneratedTask
 from emtom.tools import get_emtom_tools
 
+# Import CommunicationTool for agent-to-agent messaging
+from habitat_llm.tools.perception.communication_tool import CommunicationTool
+from omegaconf import OmegaConf
+
 # Import mechanics
 from emtom.mechanics import (
     InverseStateMechanic,
@@ -123,16 +127,28 @@ def main(config: DictConfig) -> None:
     eval_runner = DecentralizedEvaluationRunner(config.evaluation, env_interface)
     cprint(f"Evaluation runner created: {eval_runner}", "green")
 
-    # Inject EMTOM tools into each agent
-    cprint("\nInjecting EMTOM tools into agents...", "blue")
+    # Inject EMTOM tools and CommunicationTool into each agent
+    cprint("\nInjecting tools into agents...", "blue")
     for agent in eval_runner.agents.values():
         agent_uid = agent.uid
-        emtom_tools = get_emtom_tools(agent_uid=agent_uid)
 
+        # Add EMTOM tools (Hide, Inspect, WriteMessage)
+        emtom_tools = get_emtom_tools(agent_uid=agent_uid)
         for tool_name, tool in emtom_tools.items():
             tool.set_environment(env_interface)
             agent.tools[tool_name] = tool
             cprint(f"  Added {tool_name} to agent_{agent_uid}", "green")
+
+        # Add CommunicationTool renamed to "Communicate"
+        comm_config = OmegaConf.create({
+            "name": "Communicate",
+            "description": "Send a message to the other agent. Usage: Communicate[your message here]. The other agent will see your message in their context."
+        })
+        comm_tool = CommunicationTool(comm_config)
+        comm_tool.agent_uid = agent_uid
+        comm_tool.set_environment(env_interface)
+        agent.tools["Communicate"] = comm_tool
+        cprint(f"  Added Communicate to agent_{agent_uid}", "green")
 
     # Print agent info
     cprint(f"\nAgents: {eval_runner.agent_list}", "blue")
