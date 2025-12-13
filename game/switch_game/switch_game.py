@@ -213,10 +213,15 @@ class SwitchGameSpec(GameSpec):
                 mapped_room = room_mapping[flipper_room]
                 observed_on.append(mapped_room)
 
+        rooms_on = sorted(observed_on)
+        target = sorted(target_pattern)
+        message = f"Current rooms ON: {rooms_on if rooms_on else 'None'}. Target pattern: {target}."
+
         return {
             "ok": True,
-            "rooms_on": sorted(observed_on),
-            "target_pattern": sorted(target_pattern),
+            "message": message,
+            "rooms_on": rooms_on,
+            "target_pattern": target,
         }
 
     def _submit_pattern(
