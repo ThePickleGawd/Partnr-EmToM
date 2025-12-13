@@ -192,13 +192,25 @@ def main(config: DictConfig) -> None:
         print(f"Results: {json.dumps(info, indent=2, default=str)}")
 
     except Exception as e:
-        cprint(f"Error during task execution: {e}", "red")
-        traceback.print_exc()
-        # Try to save video even on error
-        cprint("Attempting to save video despite error...", "yellow")
+        error_str = str(e)
+
+        # Check if this is a timeout (episode over) vs a real error
+        is_timeout = "Episode over" in error_str or "call reset before calling step" in error_str
+
+        if is_timeout:
+            cprint(f"\nTask timed out (max simulation steps reached)", "yellow")
+            cprint("This is normal - the task just needs more steps to complete.", "yellow")
+            video_suffix = f"emtom_{task.task_id}_timeout"
+        else:
+            cprint(f"Error during task execution: {e}", "red")
+            traceback.print_exc()
+            video_suffix = f"emtom_{task.task_id}_error"
+
+        # Save video
+        cprint("Saving video...", "yellow")
         try:
             if hasattr(eval_runner, 'dvu') and eval_runner.dvu is not None:
-                eval_runner.dvu._make_video(play=False, postfix=f"emtom_{task.task_id}_error")
+                eval_runner.dvu._make_video(play=False, postfix=video_suffix)
                 cprint("Third-person video saved!", "green")
             if hasattr(eval_runner, '_fpv_recorder') and eval_runner._fpv_recorder is not None:
                 eval_runner._make_first_person_videos()

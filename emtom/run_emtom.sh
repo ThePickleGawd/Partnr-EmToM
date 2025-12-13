@@ -10,7 +10,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Default values
-MAX_SIM_STEPS=1000
+MAX_SIM_STEPS=20000
 MAX_LLM_CALLS=20
 EXPLORATION_STEPS=50
 
@@ -20,20 +20,23 @@ print_usage() {
     echo "Usage: ./emtom/run_emtom.sh <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  exploration    Run LLM-guided exploration in Habitat (generates video)"
+    echo "  exploration    Run LLM-guided exploration in Habitat"
     echo "  generate       Generate tasks from exploration trajectories"
-    echo "  benchmark      Run the Habitat benchmark with video recording"
-    echo "  all            Run the full pipeline (exploration -> generate -> benchmark)"
+    echo "  benchmark      Run benchmark with generated tasks"
+    echo "  all            Run full pipeline: exploration -> generate -> benchmark"
     echo ""
-    echo "Options:"
-    echo "  --max-sim-steps N    Maximum simulation steps for benchmark (default: $MAX_SIM_STEPS)"
-    echo "  --max-llm-calls N    Maximum LLM calls per agent (default: $MAX_LLM_CALLS)"
-    echo "  --steps N            Exploration steps (default: $EXPLORATION_STEPS)"
+    echo "Exploration Options:"
+    echo "  --steps N            Number of exploration steps (default: $EXPLORATION_STEPS)"
+    echo ""
+    echo "Benchmark Options:"
+    echo "  --max-sim-steps N    Max simulation steps before timeout (default: $MAX_SIM_STEPS)"
+    echo "  --max-llm-calls N    Max LLM calls per agent (default: $MAX_LLM_CALLS)"
     echo ""
     echo "Examples:"
-    echo "  ./emtom/run_emtom.sh exploration --steps 100"
-    echo "  ./emtom/run_emtom.sh benchmark --max-sim-steps 500"
-    echo "  ./emtom/run_emtom.sh all"
+    echo "  ./emtom/run_emtom.sh exploration --steps 30"
+    echo "  ./emtom/run_emtom.sh generate"
+    echo "  ./emtom/run_emtom.sh benchmark --max-sim-steps 1000 --max-llm-calls 15"
+    echo "  ./emtom/run_emtom.sh all --steps 50 --max-sim-steps 2000"
 }
 
 run_exploration() {
