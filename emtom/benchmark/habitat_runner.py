@@ -34,7 +34,7 @@ class HabitatRunConfig(RunConfig):
     """Configuration for Habitat-integrated task execution."""
     save_video: bool = True
     video_fps: int = 30
-    output_dir: str = "outputs/emtom"
+    output_dir: str = "data/emtom/benchmark"
     play_video: bool = False
     save_fpv: bool = True  # Save first-person view videos
 

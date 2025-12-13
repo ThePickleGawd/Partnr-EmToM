@@ -43,8 +43,12 @@ from habitat_llm.utils import cprint, setup_config, fix_config
 
 from emtom.task_gen import GeneratedTask
 
-# Import mechanics to register them
-from emtom.mechanics import inverse_open, remote_switch, counting_trigger
+# Import mechanics
+from emtom.mechanics import (
+    InverseStateMechanic,
+    RemoteControlMechanic,
+    CountingStateMechanic,
+)
 
 
 def load_tasks(task_file: str) -> list:
@@ -126,72 +130,67 @@ def main(config: DictConfig) -> None:
     os.makedirs(output_dir, exist_ok=True)
     cprint(f"Output directory: {output_dir}", "blue")
 
-    # Load EMTOM tasks or use episode instruction
-    task_file = "data/tasks/emtom_challenges_20251212_191827.json"
+    # Find EMTOM task files in data/emtom/tasks/
+    task_dir = Path("data/emtom/tasks")
+    if not task_dir.exists():
+        cprint(f"ERROR: Task directory not found: {task_dir}", "red")
+        cprint("Run task generation first: ./emtom/run_emtom.sh generate", "yellow")
+        sys.exit(1)
 
-    if os.path.exists(task_file):
-        tasks = load_tasks(task_file)
-        cprint(f"Loaded {len(tasks)} EMTOM tasks", "green")
+    task_files = list(task_dir.glob("emtom_challenges_*.json"))
+    if not task_files:
+        cprint(f"ERROR: No task files found in {task_dir}", "red")
+        cprint("Run task generation first: ./emtom/run_emtom.sh generate", "yellow")
+        sys.exit(1)
 
-        # Run first task as demonstration
-        if tasks:
-            task = tasks[0]
-            instruction = task_to_instruction(task)
+    # Use the most recent task file
+    task_file = sorted(task_files)[-1]
+    cprint(f"Using task file: {task_file}", "blue")
 
-            cprint(f"\n{'='*60}", "blue")
-            cprint(f"EMTOM TASK: {task.title}", "blue")
-            cprint(f"{'='*60}", "blue")
-            print(f"Description: {task.description}")
-            print(f"Mechanics: {task.required_mechanics}")
-            print(f"Goal: {task.success_condition.description}")
-            print(f"\nInstruction to agents:\n{instruction}")
+    tasks = load_tasks(str(task_file))
+    if not tasks:
+        cprint(f"ERROR: No tasks found in {task_file}", "red")
+        sys.exit(1)
 
-            # Run the instruction using the evaluation runner
-            # This will use LLM planners to generate actions and record video
-            try:
-                cprint("\nStarting task execution with LLM planners...", "blue")
-                info = eval_runner.run_instruction(
-                    instruction=instruction,
-                    output_name=f"emtom_{task.task_id}"
-                )
+    cprint(f"Loaded {len(tasks)} EMTOM tasks", "green")
 
-                cprint("\nTask execution completed!", "green")
-                print(f"Results: {json.dumps(info, indent=2, default=str)}")
+    # Run first task
+    task = tasks[0]
+    instruction = task_to_instruction(task)
 
-            except Exception as e:
-                cprint(f"Error during task execution: {e}", "red")
-                traceback.print_exc()
-                # Try to save video even on error
-                cprint("Attempting to save video despite error...", "yellow")
-                try:
-                    if hasattr(eval_runner, 'dvu') and eval_runner.dvu is not None:
-                        eval_runner.dvu._make_video(play=False, postfix=f"emtom_{task.task_id}_error")
-                        cprint("Third-person video saved!", "green")
-                    if hasattr(eval_runner, '_fpv_recorder') and eval_runner._fpv_recorder is not None:
-                        eval_runner._make_first_person_videos()
-                        cprint("First-person videos saved!", "green")
-                except Exception as ve:
-                    cprint(f"Could not save video: {ve}", "red")
-    else:
-        cprint(f"Task file not found: {task_file}", "yellow")
-        cprint("Running with episode instruction from dataset...", "blue")
+    cprint(f"\n{'='*60}", "blue")
+    cprint(f"EMTOM TASK: {task.title}", "blue")
+    cprint(f"{'='*60}", "blue")
+    print(f"Description: {task.description}")
+    print(f"Mechanics: {task.required_mechanics}")
+    print(f"Goal: {task.success_condition.description}")
+    print(f"\nInstruction to agents:\n{instruction}")
 
-        # Get the instruction from the current episode
-        curr_env = env_interface.env.env.env._env
-        instruction = curr_env.current_episode.instruction
+    # Run the instruction using the evaluation runner
+    try:
+        cprint("\nStarting task execution with LLM planners...", "blue")
+        info = eval_runner.run_instruction(
+            instruction=instruction,
+            output_name=f"emtom_{task.task_id}"
+        )
 
-        cprint(f"\nEpisode instruction: {instruction}", "blue")
+        cprint("\nTask execution completed!", "green")
+        print(f"Results: {json.dumps(info, indent=2, default=str)}")
 
+    except Exception as e:
+        cprint(f"Error during task execution: {e}", "red")
+        traceback.print_exc()
+        # Try to save video even on error
+        cprint("Attempting to save video despite error...", "yellow")
         try:
-            info = eval_runner.run_instruction(
-                instruction=instruction,
-                output_name="emtom_episode_demo"
-            )
-            cprint("\nEpisode completed!", "green")
-            print(f"Results: {json.dumps(info, indent=2, default=str)}")
-        except Exception as e:
-            cprint(f"Error during execution: {e}", "red")
-            traceback.print_exc()
+            if hasattr(eval_runner, 'dvu') and eval_runner.dvu is not None:
+                eval_runner.dvu._make_video(play=False, postfix=f"emtom_{task.task_id}_error")
+                cprint("Third-person video saved!", "green")
+            if hasattr(eval_runner, '_fpv_recorder') and eval_runner._fpv_recorder is not None:
+                eval_runner._make_first_person_videos()
+                cprint("First-person videos saved!", "green")
+        except Exception as ve:
+            cprint(f"Could not save video: {ve}", "red")
 
     # Cleanup
     env_interface.env.close()
