@@ -141,6 +141,12 @@ class DebugVideoUtil:
         :param play: Whether or not to play the video immediately.
         :param postfix: An optional postfix for the video file name.
         """
+        if not self.frames:
+            print("No frames to write; skipping video.")
+            return
+        frames = list(self.frames)
+        if len(frames) == 1:
+            frames = frames * 30  # pad to ~1s @30fps so the video isn't empty
         extra = f"-{postfix}" if postfix else ""
         if self.unique_postfix:
             extra = f"{extra}-{int(time.time()*1000)}"
@@ -148,7 +154,7 @@ class DebugVideoUtil:
         print(f"Saving video to {out_file}")
         os.makedirs(f"{self.output_dir}/videos", exist_ok=True)
         writer = imageio.get_writer(out_file, fps=30, quality=4)
-        for frame in self.frames:
+        for frame in frames:
             writer.append_data(frame)
 
         writer.close()

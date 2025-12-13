@@ -140,7 +140,6 @@ class ManualPlanner(Planner):
                 if frames:
                     # keep frames for both per-action save and downstream cumulative video
                     manual_frames.setdefault(agent.uid, []).extend(frames)
-                    self._save_media(frames, agent_uid=agent.uid)
                 if fpv_frames:
                     for agent_name, f_list in fpv_frames.items():
                         manual_fpv_frames.setdefault(agent_name, []).extend(f_list)
@@ -283,26 +282,6 @@ class ManualPlanner(Planner):
         if make_video and dvu.frames:
             dvu._make_video(play=False)
         return responses, dvu.frames, fpv_frames
-
-    def _save_media(self, frames, agent_uid: int) -> None:
-        """
-        Save frames to a video file for the last executed action.
-        """
-        import imageio
-        import os
-
-        if not frames:
-            return
-        base_dir = getattr(getattr(self.env_interface, "conf", None), "paths", None)
-        out_root = getattr(base_dir, "results_dir", None) if base_dir is not None else "outputs"
-        out_dir = os.path.join(out_root, "manual_obs")
-        os.makedirs(out_dir, exist_ok=True)
-        video_path = os.path.join(out_dir, f"agent_{agent_uid}_action.mp4")
-        try:
-            imageio.mimwrite(video_path, frames, fps=30)
-            print(f"Agent_{agent_uid} video saved to {video_path} (fps=30)")
-        except Exception as exc:
-            print(f"[Manual CLI] Failed to write video: {exc}")
 
     def _extract_rgb(self, obs: Dict[str, Any]) -> Optional[Any]:
         """

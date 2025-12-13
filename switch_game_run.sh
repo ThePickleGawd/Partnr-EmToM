@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run the time game using the emtom house dataset (data/emtom/test_house.json.gz).
+# Run the switch game using the emtom house dataset (data/emtom/test_house.json.gz).
 # Override SCENE_ID to target a different emtom scene if available.
 
 SCENE_ID="${SCENE_ID:-102817140}"
@@ -12,7 +12,7 @@ if [ -f .env ]; then
 fi
 set +a
 
-python -m habitat_llm.examples.emtom --config-name game/time_game \
+python -m habitat_llm.examples.emtom --config-name game/switch_game \
     mode="cli" \
     evaluation.save_video=True \
     +game.manual_agents=[] \

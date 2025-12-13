@@ -8,8 +8,8 @@ defaults:
   - override /llm@evaluation.agents.agent_1.planner.plan_config.llm: openai_chat
   - override /agent@evaluation.agents.agent_0.config: game/bomb_game/agent_0
   - override /agent@evaluation.agents.agent_1.config: game/bomb_game/agent_1
-  - override /instruct@evaluation.agents.agent_0.planner.plan_config.instruct: few_shot_decentralized_partial_robot_spatialobjstates_instruct
-  - override /instruct@evaluation.agents.agent_1.planner.plan_config.instruct: few_shot_decentralized_partial_robot_spatialobjstates_instruct
+  - override /instruct@evaluation.agents.agent_0.planner.plan_config.instruct: emtom_no_visual
+  - override /instruct@evaluation.agents.agent_1.planner.plan_config.instruct: emtom_no_visual
   - _self_
 
 # Game config
@@ -18,6 +18,7 @@ game:
   type: bomb_game
   max_defuse_attempts: 1
   auto_defuse_on_enter: false
+  tool_delay: 2.0  # seconds to wait before executing game tools (for video visibility)
   instruction_prefix: "You are playing a bomb-defusal game. Follow the game rules below."
   instruction_override: "Play the bomb defusal game. Coordinate to find and defuse the bomb."
 

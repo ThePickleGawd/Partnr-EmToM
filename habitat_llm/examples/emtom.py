@@ -48,6 +48,7 @@ from habitat_baselines.utils.info_dict import extract_scalars_from_info
 from game.game import GameOrchestrator
 from game.bomb_game import BombGameSpec
 from game.time_game import TimeGameSpec
+from game.switch_game import SwitchGameSpec
 from game.habitat_adapter import HabitatEnvironmentAdapter
 from game.game_runner import GameDecentralizedEvaluationRunner
 from omegaconf import OmegaConf, open_dict
@@ -329,11 +330,13 @@ def run_planner(config, dataset: CollaborationDatasetV0 = None, conn=None):
                 spec = TimeGameSpec(
                     max_submissions=getattr(config.game, "max_submissions", 3),
                 )
+            elif config.game.type == "switch_game":
+                spec = SwitchGameSpec()
             else:
                 raise ValueError(f"Unknown game type {config.game.type}")
             game_orchestrator = GameOrchestrator(spec, adapter)
-            # Optional global turn limit across all game types.
-            game_orchestrator.turn_limit = getattr(config.game, "turn_limit", None)
+            # Optional delay before game tool execution (for video visibility).
+            game_orchestrator.tool_delay = getattr(config.game, "tool_delay", 0.0)
             if config.game.instruction_override:
                 game_instruction_override = config.game.instruction_override
     else:

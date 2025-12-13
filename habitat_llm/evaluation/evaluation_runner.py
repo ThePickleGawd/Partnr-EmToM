@@ -385,6 +385,40 @@ class EvaluationRunner:
         if self.evaluation_runner_config.log_detailed_traces:
             self._save_detailed_traces()
 
+    def _flush_planner_log(self, planner_infos: List[Dict[str, Any]]) -> None:
+        """
+        Incrementally write planner log to file, overwriting previous.
+        Allows viewing progress during long runs or after early exit.
+
+        :param planner_infos: List of dictionaries containing planner information at each step
+        """
+        if not planner_infos:
+            return
+        file_path_json = os.path.join(
+            self.output_dir,
+            "planner-log",
+            f"planner-log-{self.episode_filename}.json",
+        )
+        os.makedirs(os.path.dirname(file_path_json), exist_ok=True)
+        planner_log: Dict[str, Any] = {
+            "task": getattr(self, "current_instruction", ""),
+            "steps": [],
+        }
+        keys_to_exclude = ["prompts", "traces", "print", "print_no_tags"]
+        for i, planner_info in enumerate(planner_infos):
+            step_info = {
+                k: v
+                for k, v in sorted(planner_info.items())
+                if k not in keys_to_exclude
+            }
+            step_info["log_index"] = i
+            planner_log["steps"].append(step_info)
+        try:
+            with open(file_path_json, "w") as file:
+                file.write(json.dumps(planner_log, default=str))
+        except Exception:
+            pass  # Ignore flush errors to not interrupt the run
+
     def _save_detailed_traces(self) -> None:
         """
         Save detailed traces to a pickle file containing instruction, action history and state history.
@@ -775,6 +809,9 @@ class EvaluationRunner:
 
             # Append planner info to history
             planner_infos.append(copy_planner_info)
+
+            # Incremental log save (lightweight, just JSON)
+            self._flush_planner_log(planner_infos)
 
             # Increment while loop step count
             total_step_count += 1

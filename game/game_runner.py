@@ -29,6 +29,28 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
         self.game_orchestrator = game_orchestrator
         self.base_instruction = base_instruction
         super().__init__(evaluation_runner_config_arg, env_arg)
+        # Wrap post_agent_message to preprocess messages through the game spec
+        self._wrap_post_agent_message()
+
+    def _wrap_post_agent_message(self) -> None:
+        """
+        Wrap the env_interface.post_agent_message to preprocess messages
+        through the game spec before sending. This allows games to redact
+        sensitive information (e.g., secret codes) from agent communications.
+        """
+        if not self.game_orchestrator:
+            return
+        original_post = self.env_interface.post_agent_message
+        orchestrator = self.game_orchestrator
+
+        def wrapped_post(sender_uid: int, message: str) -> None:
+            if orchestrator.state is not None:
+                message = orchestrator.game_spec.preprocess_message(
+                    str(sender_uid), message, orchestrator.state
+                )
+            original_post(sender_uid, message)
+
+        self.env_interface.post_agent_message = wrapped_post
 
     def _inject_game_tools(self) -> None:
         """
@@ -47,7 +69,7 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
             for desc in descs:
                 if desc.name in agent.tools:
                     continue
-                tool = GameTool(desc, self.game_orchestrator, agent.uid)
+                tool = GameTool(desc, self.game_orchestrator, agent.uid, self.env_interface)
                 agent.tools[tool.name] = tool
                 added.append(desc.name)
 
@@ -261,16 +283,6 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
 
             # Update game state based on latest env situation
             self._maybe_update_game()
-            # Optional global game turn limit; only count iterations where planners produced actions/info.
-            if (
-                self.game_orchestrator
-                and self.game_orchestrator.state
-                and self.game_orchestrator.turn_limit is not None
-            ):
-                if self.game_orchestrator.should_count_turn(planner_info, low_level_actions):
-                    allowed = self.game_orchestrator.increment_turn()
-                    if not allowed:
-                        should_end = True
 
             # refresh game tools in case availability changed (e.g., entering bomb room)
             self._inject_game_tools()
@@ -401,9 +413,24 @@ class GameDecentralizedEvaluationRunner(DecentralizedEvaluationRunner):
                 planner_info["popup_images"] = {}
 
             copy_planner_info = copy.deepcopy(planner_info)
+            # Ensure high_level_actions has entries for all agents marked as replanned
+            # to avoid assertion errors in update_agent_action_history
+            if "replanned" in copy_planner_info and "high_level_actions" in copy_planner_info:
+                for agent_id, was_replanned in copy_planner_info["replanned"].items():
+                    if was_replanned and agent_id not in copy_planner_info["high_level_actions"]:
+                        # Add a placeholder action for agents that replanned but have no action
+                        copy_planner_info["high_level_actions"][agent_id] = (
+                            "NoAction",
+                            None,
+                            "No action parsed from LLM response",
+                        )
             self.update_agent_state_history(copy_planner_info)
             self.update_agent_action_history(copy_planner_info)
             planner_infos.append(copy_planner_info)
+
+            # Incremental log save (lightweight, just JSON)
+            self._flush_planner_log(planner_infos)
+
             total_step_count += 1
 
         if (
