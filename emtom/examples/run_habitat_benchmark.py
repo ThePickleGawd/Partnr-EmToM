@@ -3,18 +3,18 @@
 Example script for running the EMTOM benchmark with Habitat integration.
 
 This script demonstrates running EMTOM tasks in the Habitat simulator
-with proper video recording (third-person and first-person views).
+with proper video recording (third-person and first-person views) and
+LLM-driven agent actions.
 
 Usage:
     # Run with Habitat (requires proper config and scene data)
-    python emtom/examples/run_habitat_benchmark.py \\
-        --config-name examples/planner_multi_agent_demo_config \\
+    python emtom/examples/run_habitat_benchmark.py \
+        --config-name examples/planner_multi_agent_demo_config \
         evaluation.save_video=True
 
     # The script uses the existing habitat_llm configuration system
 """
 
-import argparse
 import json
 import os
 import sys
@@ -38,15 +38,9 @@ from habitat_llm.agent.env import (
     remove_visual_sensors,
 )
 from habitat_llm.agent.env.dataset import CollaborationDatasetV0
-from habitat_llm.examples.example_utils import DebugVideoUtil, FirstPersonVideoRecorder
+from habitat_llm.evaluation import DecentralizedEvaluationRunner
 from habitat_llm.utils import cprint, setup_config, fix_config
 
-from emtom.benchmark import (
-    ScriptedAgent,
-    BenchmarkEvaluator,
-    BenchmarkResults,
-    HabitatRunConfig,
-)
 from emtom.task_gen import GeneratedTask
 
 # Import mechanics to register them
@@ -66,250 +60,23 @@ def load_tasks(task_file: str) -> list:
     return tasks
 
 
-def create_scripted_agents_for_task(task: GeneratedTask) -> dict:
-    """Create scripted agents with predefined actions for testing."""
-    agents = {}
+def task_to_instruction(task: GeneratedTask) -> str:
+    """Convert an EMTOM task to a natural language instruction for the agents."""
+    # Build an instruction that includes the task context
+    instruction_parts = [
+        f"Task: {task.title}",
+        f"Description: {task.description}",
+        f"Goal: {task.success_condition.description}",
+    ]
 
-    for agent_id in task.agent_roles.keys():
-        knowledge = task.agent_knowledge.get(agent_id, [])
-        script = []
+    # Add any special knowledge that agents have
+    if task.agent_knowledge:
+        instruction_parts.append("\nAgent-specific knowledge:")
+        for agent_id, knowledge in task.agent_knowledge.items():
+            if knowledge:
+                instruction_parts.append(f"  {agent_id}: {', '.join(knowledge)}")
 
-        if "inverse" in str(task.required_mechanics).lower():
-            if "Doors in this house work backwards" in knowledge:
-                script = [
-                    {"action": "close", "target": "door_1"},
-                    {"action": "communicate", "target": "agent_1" if agent_id == "agent_0" else "agent_0",
-                     "message": "The doors work backwards! Use 'close' to open them."},
-                    {"action": "close", "target": "door_3"},
-                ]
-            else:
-                script = [
-                    {"action": "open", "target": "door_2"},
-                    {"action": "wait"},
-                    {"action": "close", "target": "door_2"},
-                ]
-        elif "counting" in str(task.required_mechanics).lower():
-            if agent_id == "agent_0":
-                script = [
-                    {"action": "move", "target": "vault_room"},
-                    {"action": "press", "target": "security_button"},
-                    {"action": "move", "target": "waiting_room"},
-                ]
-            else:
-                script = [
-                    {"action": "wait"},
-                    {"action": "move", "target": "vault_room"},
-                    {"action": "press", "target": "security_button"},
-                    {"action": "press", "target": "security_button"},
-                ]
-        else:
-            script = [{"action": "look"}, {"action": "wait"}]
-
-        agents[agent_id] = ScriptedAgent(agent_id, script)
-
-    return agents
-
-
-class EMTOMHabitatRunner:
-    """
-    Runs EMTOM benchmark tasks in Habitat with video recording.
-
-    Uses the existing habitat_llm video utilities (DebugVideoUtil, FirstPersonVideoRecorder)
-    to record third-person and first-person views of the agents.
-    """
-
-    def __init__(
-        self,
-        env_interface: EnvironmentInterface,
-        output_dir: str,
-        save_video: bool = True,
-        video_fps: int = 30,
-    ):
-        self.env_interface = env_interface
-        self.output_dir = output_dir
-        self.save_video = save_video
-        self.video_fps = video_fps
-
-        # Video recording
-        self._dvu = None
-        self._fpv_recorder = None
-        self._fpv_recorder_failed = False
-
-        if save_video:
-            self._setup_video_recording()
-
-    def _setup_video_recording(self) -> None:
-        """Initialize video recording utilities."""
-        os.makedirs(self.output_dir, exist_ok=True)
-
-        # Third-person split-screen video
-        self._dvu = DebugVideoUtil(
-            self.env_interface,
-            self.output_dir,
-            unique_postfix=True,
-        )
-
-        # First-person video recorder
-        try:
-            self._fpv_recorder = FirstPersonVideoRecorder(
-                self.env_interface,
-                output_dir=self.output_dir,
-                fps=self.video_fps,
-            )
-        except Exception as e:
-            cprint(f"[EMTOM] Failed to initialize FPV recorder: {e}", "yellow")
-            self._fpv_recorder_failed = True
-
-    def run_task(
-        self,
-        task: GeneratedTask,
-        max_steps: int = 100,
-        verbose: bool = True,
-    ) -> dict:
-        """
-        Run a single EMTOM task in Habitat.
-
-        This executes the agents in the Habitat environment and records video.
-        """
-        if verbose:
-            cprint(f"\n{'='*60}", "blue")
-            cprint(f"EMTOM TASK: {task.title}", "blue")
-            cprint(f"{'='*60}", "blue")
-            print(f"Description: {task.description}")
-            print(f"Mechanics: {task.required_mechanics}")
-            print(f"Goal: {task.success_condition.description}")
-
-        # Clear video buffers
-        if self._dvu:
-            self._dvu.frames.clear()
-        if self._fpv_recorder:
-            self._fpv_recorder._frames = {}
-
-        # Get initial observations
-        observations = self.env_interface.get_observations()
-
-        # Record initial frame
-        if self.save_video:
-            self._record_frame(observations, {})
-
-        result = {
-            "task_id": task.task_id,
-            "task_title": task.title,
-            "status": "running",
-            "steps": 0,
-            "video_paths": {},
-        }
-
-        # Run for max_steps (in real usage, agents would control the loop)
-        for step in range(max_steps):
-            if verbose and step % 10 == 0:
-                print(f"  Step {step}...")
-
-            # In a real benchmark, agents would select actions here
-            # For now, we just step the environment to show video recording works
-            try:
-                # Create no-op actions for each agent
-                # low_level_actions is Dict[agent_id, np.ndarray]
-                # Each agent's action is a FULL action vector (joint space), filled with zeros
-                # for a no-op. When added together they form the final action.
-                import numpy as np
-                from habitat_baselines.utils.common import get_num_actions
-
-                # Get the total action dimension from the flattened action space
-                action_space = self.env_interface.action_space
-                total_action_dim = get_num_actions(action_space)
-
-                # Determine number of agents
-                num_agents = 2
-                try:
-                    num_agents = len(self.env_interface.conf.evaluation.agents)
-                except Exception:
-                    pass
-
-                # Each agent returns a FULL action vector (size = total_action_dim)
-                # For no-op, all zeros works since actions are added together
-                low_level_actions = {}
-                for agent_idx in range(num_agents):
-                    low_level_actions[agent_idx] = np.zeros(total_action_dim, dtype=np.float32)
-
-                # Step environment
-                obs, reward, done, info = self.env_interface.step(low_level_actions)
-                observations = self.env_interface.parse_observations(obs)
-
-                # Record frame
-                if self.save_video:
-                    # Create action info for video overlay
-                    action_info = {0: ("exploring", ""), 1: ("exploring", "")}
-                    self._record_frame(observations, action_info)
-
-                result["steps"] = step + 1
-
-                if done:
-                    result["status"] = "done"
-                    break
-
-            except Exception as e:
-                cprint(f"[EMTOM] Error during step {step}: {e}", "red")
-                traceback.print_exc()
-                result["status"] = "error"
-                result["error"] = str(e)
-                break
-
-        # Save videos
-        if self.save_video:
-            video_paths = self._save_videos(task.task_id)
-            result["video_paths"] = video_paths
-
-        if verbose:
-            cprint(f"Task completed: {result['status']} in {result['steps']} steps", "green")
-
-        return result
-
-    def _record_frame(self, observations: dict, actions: dict) -> None:
-        """Record a video frame."""
-        # Third-person video
-        if self._dvu:
-            try:
-                self._dvu._store_for_video(observations, actions, popup_images={})
-            except Exception as e:
-                pass  # Silently continue if frame recording fails
-
-        # First-person video
-        if self._fpv_recorder and not self._fpv_recorder_failed:
-            try:
-                self._fpv_recorder.record_step(observations)
-            except Exception as e:
-                pass
-
-    def _save_videos(self, task_id: str) -> dict:
-        """Save recorded videos."""
-        video_paths = {}
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        postfix = f"{task_id}_{timestamp}"
-
-        # Save third-person video
-        if self._dvu and self._dvu.frames:
-            try:
-                self._dvu._make_video(play=False, postfix=postfix)
-                video_dir = os.path.join(self.output_dir, "videos")
-                video_path = os.path.join(video_dir, f"video-{postfix}.mp4")
-                if os.path.exists(video_path):
-                    video_paths["third_person"] = video_path
-                    cprint(f"[EMTOM] Third-person video saved: {video_path}", "green")
-            except Exception as e:
-                cprint(f"[EMTOM] Failed to save third-person video: {e}", "yellow")
-
-        # Save first-person videos
-        if self._fpv_recorder and not self._fpv_recorder_failed:
-            try:
-                fpv_paths = self._fpv_recorder.save(postfix=postfix)
-                for agent_name, path in fpv_paths.items():
-                    video_paths[f"fpv_{agent_name}"] = path
-                    cprint(f"[EMTOM] FPV video saved for {agent_name}: {path}", "green")
-            except Exception as e:
-                cprint(f"[EMTOM] Failed to save FPV videos: {e}", "yellow")
-
-        return video_paths
+    return "\n".join(instruction_parts)
 
 
 @hydra.main(version_base=None, config_path="../../habitat_llm/conf")
@@ -346,78 +113,95 @@ def main(config: DictConfig) -> None:
 
     cprint("Environment initialized!", "green")
 
-    # Print initial world state
-    try:
-        from habitat_llm.utils.world_graph import print_all_entities
-        cprint("\nInitial world entities:", "cyan")
-        print_all_entities(env_interface.perception.gt_graph)
-    except Exception:
-        pass
+    # Create evaluation runner - this handles planners, agents, video recording
+    cprint("Initializing evaluation runner with LLM planners...", "blue")
+    eval_runner = DecentralizedEvaluationRunner(config.evaluation, env_interface)
+    cprint(f"Evaluation runner created: {eval_runner}", "green")
+
+    # Print agent info
+    cprint(f"\nAgents: {eval_runner.agent_list}", "blue")
 
     # Setup output directory
     output_dir = config.paths.results_dir
     os.makedirs(output_dir, exist_ok=True)
     cprint(f"Output directory: {output_dir}", "blue")
 
-    # Create EMTOM runner
-    runner = EMTOMHabitatRunner(
-        env_interface=env_interface,
-        output_dir=output_dir,
-        save_video=True,
-        video_fps=30,
-    )
-
-    # Load EMTOM tasks (or use episode instruction)
+    # Load EMTOM tasks or use episode instruction
     task_file = "data/tasks/emtom_challenges_20251212_191827.json"
+
     if os.path.exists(task_file):
         tasks = load_tasks(task_file)
         cprint(f"Loaded {len(tasks)} EMTOM tasks", "green")
 
         # Run first task as demonstration
         if tasks:
-            result = runner.run_task(tasks[0], max_steps=50, verbose=True)
-            print(f"\nResult: {json.dumps(result, indent=2)}")
+            task = tasks[0]
+            instruction = task_to_instruction(task)
+
+            cprint(f"\n{'='*60}", "blue")
+            cprint(f"EMTOM TASK: {task.title}", "blue")
+            cprint(f"{'='*60}", "blue")
+            print(f"Description: {task.description}")
+            print(f"Mechanics: {task.required_mechanics}")
+            print(f"Goal: {task.success_condition.description}")
+            print(f"\nInstruction to agents:\n{instruction}")
+
+            # Run the instruction using the evaluation runner
+            # This will use LLM planners to generate actions and record video
+            try:
+                cprint("\nStarting task execution with LLM planners...", "blue")
+                info = eval_runner.run_instruction(
+                    instruction=instruction,
+                    output_name=f"emtom_{task.task_id}"
+                )
+
+                cprint("\nTask execution completed!", "green")
+                print(f"Results: {json.dumps(info, indent=2, default=str)}")
+
+            except Exception as e:
+                cprint(f"Error during task execution: {e}", "red")
+                traceback.print_exc()
+                # Try to save video even on error
+                cprint("Attempting to save video despite error...", "yellow")
+                try:
+                    if hasattr(eval_runner, 'dvu') and eval_runner.dvu is not None:
+                        eval_runner.dvu._make_video(play=False, postfix=f"emtom_{task.task_id}_error")
+                        cprint("Third-person video saved!", "green")
+                    if hasattr(eval_runner, '_fpv_recorder') and eval_runner._fpv_recorder is not None:
+                        eval_runner._make_first_person_videos()
+                        cprint("First-person videos saved!", "green")
+                except Exception as ve:
+                    cprint(f"Could not save video: {ve}", "red")
     else:
         cprint(f"Task file not found: {task_file}", "yellow")
-        cprint("Running demonstration with episode from dataset...", "blue")
+        cprint("Running with episode instruction from dataset...", "blue")
 
-        # Create a simple demo task
-        demo_task = GeneratedTask(
-            task_id="demo_task",
-            title="Habitat Video Demo",
-            category="coordination",
-            description="Demonstration of video recording in Habitat",
-            initial_world_state={},
-            required_mechanics=[],
-            num_agents=2,
-            agent_roles={"agent_0": "Explorer", "agent_1": "Observer"},
-            agent_knowledge={},
-            subtasks=[],
-            success_condition=None,
-            failure_conditions=[],
-            difficulty=1,
-            estimated_steps=10,
-        )
+        # Get the instruction from the current episode
+        curr_env = env_interface.env.env.env._env
+        instruction = curr_env.current_episode.instruction
 
-        # Minimal success condition
-        from emtom.task_gen.task_generator import SuccessCondition
-        demo_task.success_condition = SuccessCondition(
-            description="Complete exploration",
-            required_states=[],
-            time_limit=50,
-        )
+        cprint(f"\nEpisode instruction: {instruction}", "blue")
 
-        result = runner.run_task(demo_task, max_steps=30, verbose=True)
-        print(f"\nResult: {json.dumps(result, indent=2)}")
+        try:
+            info = eval_runner.run_instruction(
+                instruction=instruction,
+                output_name="emtom_episode_demo"
+            )
+            cprint("\nEpisode completed!", "green")
+            print(f"Results: {json.dumps(info, indent=2, default=str)}")
+        except Exception as e:
+            cprint(f"Error during execution: {e}", "red")
+            traceback.print_exc()
 
     # Cleanup
     env_interface.env.close()
     cprint("\nBenchmark complete!", "green")
+    cprint(f"Check {output_dir} for videos and logs", "blue")
 
 
 if __name__ == "__main__":
     cprint("\nEMTOM Habitat Benchmark Runner", "blue")
-    cprint("This script runs EMTOM tasks in Habitat with video recording.\n", "blue")
+    cprint("This script runs EMTOM tasks in Habitat with LLM planners and video recording.\n", "blue")
 
     if len(sys.argv) < 2:
         cprint("Usage: python run_habitat_benchmark.py --config-name <config>", "yellow")
