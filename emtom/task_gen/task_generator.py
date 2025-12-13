@@ -38,6 +38,17 @@ class Subtask:
     depends_on: List[str] = field(default_factory=list)  # IDs of prerequisite subtasks
     hints: List[str] = field(default_factory=list)  # Optional hints about mechanics
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Subtask":
+        return cls(
+            subtask_id=data["subtask_id"],
+            description=data["description"],
+            success_condition=data["success_condition"],
+            assigned_agent=data.get("assigned_agent"),
+            depends_on=data.get("depends_on", []),
+            hints=data.get("hints", []),
+        )
+
 
 @dataclass
 class SuccessCondition:
@@ -48,6 +59,15 @@ class SuccessCondition:
     time_limit: Optional[int] = None  # Max steps allowed
     all_agents_must_survive: bool = True
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SuccessCondition":
+        return cls(
+            description=data["description"],
+            required_states=data["required_states"],
+            time_limit=data.get("time_limit"),
+            all_agents_must_survive=data.get("all_agents_must_survive", True),
+        )
+
 
 @dataclass
 class FailureCondition:
@@ -56,6 +76,14 @@ class FailureCondition:
     description: str
     failure_states: List[Dict[str, Any]] = field(default_factory=list)
     max_failed_attempts: Optional[int] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FailureCondition":
+        return cls(
+            description=data["description"],
+            failure_states=data.get("failure_states", []),
+            max_failed_attempts=data.get("max_failed_attempts"),
+        )
 
 
 @dataclass
@@ -97,6 +125,29 @@ class GeneratedTask:
     def to_json(self) -> str:
         """Convert to JSON string."""
         return json.dumps(self.to_dict(), indent=2)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GeneratedTask":
+        """Create task from dictionary."""
+        return cls(
+            task_id=data["task_id"],
+            title=data["title"],
+            category=TaskCategory(data["category"]),
+            description=data["description"],
+            initial_world_state=data["initial_world_state"],
+            required_mechanics=data["required_mechanics"],
+            num_agents=data["num_agents"],
+            agent_roles=data["agent_roles"],
+            agent_knowledge=data["agent_knowledge"],
+            subtasks=[Subtask.from_dict(s) for s in data["subtasks"]],
+            success_condition=SuccessCondition.from_dict(data["success_condition"]),
+            failure_conditions=[FailureCondition.from_dict(f) for f in data["failure_conditions"]],
+            difficulty=data["difficulty"],
+            estimated_steps=data["estimated_steps"],
+            theory_of_mind_required=data.get("theory_of_mind_required", False),
+            communication_required=data.get("communication_required", False),
+            source_trajectory=data.get("source_trajectory"),
+        )
 
 
 class TaskGenerator:
