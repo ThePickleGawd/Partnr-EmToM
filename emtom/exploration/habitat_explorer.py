@@ -44,7 +44,7 @@ class HabitatExplorationConfig:
 
     max_steps: int = 100
     agent_ids: List[str] = field(default_factory=lambda: ["agent_0"])
-    log_path: str = "data/trajectories/emtom"
+    log_path: str = "data/emtom/trajectories"
     snapshot_frequency: int = 0
     stop_on_terminal: bool = True
 

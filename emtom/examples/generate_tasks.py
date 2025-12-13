@@ -8,8 +8,8 @@ This script:
 3. Generates collaborative challenge tasks with success/failure conditions
 
 Usage:
-    python generate_tasks.py --trajectory-dir outputs/emtom/exploration
-    python generate_tasks.py --trajectory-file outputs/emtom/exploration/trajectory_xyz.json
+    python generate_tasks.py --trajectory-dir data/emtom/trajectories
+    python generate_tasks.py --trajectory-file data/emtom/trajectories/trajectory_xyz.json
 """
 
 import argparse
@@ -166,14 +166,14 @@ def main():
     parser.add_argument(
         "--trajectory-dir",
         type=str,
-        default="outputs",
-        help="Directory to search for trajectory files (default: outputs)",
+        default="data/emtom/trajectories",
+        help="Directory to search for trajectory files (default: data/emtom/trajectories)",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="data/tasks",
-        help="Output directory for generated tasks (default: data/tasks)",
+        default="data/emtom/tasks",
+        help="Output directory for generated tasks (default: data/emtom/tasks)",
     )
     parser.add_argument(
         "--num-agents",

@@ -13,7 +13,6 @@ cd "$PROJECT_ROOT"
 MAX_SIM_STEPS=1000
 MAX_LLM_CALLS=20
 EXPLORATION_STEPS=50
-RANDOM_EXPLORATION=false
 
 print_usage() {
     echo "EMTOM Benchmark Pipeline"
@@ -21,7 +20,7 @@ print_usage() {
     echo "Usage: ./emtom/run_emtom.sh <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  exploration    Run exploration in Habitat environment (generates video)"
+    echo "  exploration    Run LLM-guided exploration in Habitat (generates video)"
     echo "  generate       Generate tasks from exploration trajectories"
     echo "  benchmark      Run the Habitat benchmark with video recording"
     echo "  all            Run the full pipeline (exploration -> generate -> benchmark)"
@@ -30,11 +29,9 @@ print_usage() {
     echo "  --max-sim-steps N    Maximum simulation steps for benchmark (default: $MAX_SIM_STEPS)"
     echo "  --max-llm-calls N    Maximum LLM calls per agent (default: $MAX_LLM_CALLS)"
     echo "  --steps N            Exploration steps (default: $EXPLORATION_STEPS)"
-    echo "  --random             Use random exploration instead of LLM-guided"
     echo ""
     echo "Examples:"
     echo "  ./emtom/run_emtom.sh exploration --steps 100"
-    echo "  ./emtom/run_emtom.sh exploration --random"
     echo "  ./emtom/run_emtom.sh benchmark --max-sim-steps 500"
     echo "  ./emtom/run_emtom.sh all"
 }
@@ -43,21 +40,15 @@ run_exploration() {
     echo "=============================================="
     echo "Running EMTOM Exploration (Habitat Backend)"
     echo "=============================================="
-    echo "Mode: $([ "$RANDOM_EXPLORATION" = true ] && echo "Random" || echo "LLM-guided")"
+    echo "Mode: LLM-guided"
     echo "Steps: $EXPLORATION_STEPS"
     echo "=============================================="
     echo ""
-
-    USE_LLM="true"
-    if [ "$RANDOM_EXPLORATION" = true ]; then
-        USE_LLM="false"
-    fi
 
     # Use Hydra config system - pass parameters as config overrides
     python emtom/examples/run_habitat_exploration.py \
         --config-name examples/planner_multi_agent_demo_config \
         +exploration_steps=$EXPLORATION_STEPS \
-        +use_llm=$USE_LLM \
         evaluation.save_video=true
 }
 
@@ -68,7 +59,8 @@ run_generate() {
     echo "This generates tasks from exploration trajectories."
     echo ""
     python emtom/examples/generate_tasks.py \
-        --output-dir data/tasks
+        --trajectory-dir data/emtom/trajectories \
+        --output-dir data/emtom/tasks
 }
 
 run_benchmark() {
@@ -114,10 +106,6 @@ while [[ $# -gt 0 ]]; do
         --steps)
             EXPLORATION_STEPS=$2
             shift 2
-            ;;
-        --random)
-            RANDOM_EXPLORATION=true
-            shift
             ;;
         -h|--help)
             print_usage

@@ -36,7 +36,7 @@ from habitat_llm.agent.env import (
 from habitat_llm.agent.env.dataset import CollaborationDatasetV0
 
 
-def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed=42):
+def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
     """
     Run the exploration loop with the given environment.
 
@@ -44,7 +44,6 @@ def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed
         env_interface: Initialized EnvironmentInterface
         config: Hydra config
         max_steps: Maximum exploration steps
-        use_llm: Use LLM-guided exploration (vs random)
         seed: Random seed
     """
     from emtom.exploration.habitat_explorer import (
@@ -53,9 +52,7 @@ def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed
     )
     from emtom.exploration.curiosity import (
         CuriosityModel,
-        RandomCuriosityModel,
     )
-    from emtom.exploration.surprise_detector import RuleBasedSurpriseDetector
     from emtom.mechanics import (
         InverseStateMechanic,
         RemoteControlMechanic,
@@ -64,7 +61,7 @@ def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed
     from habitat_llm.agent import Agent
 
     # Get output directory from config
-    output_dir = config.paths.results_dir if hasattr(config, 'paths') else "outputs/emtom/exploration"
+    output_dir = config.paths.results_dir if hasattr(config, 'paths') else "data/emtom/trajectories"
     os.makedirs(output_dir, exist_ok=True)
 
     # Get scene info
@@ -124,24 +121,22 @@ def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed
     for m in mechanics:
         print(f"  - {m.name}: {m.description}")
 
-    # Setup curiosity model
-    print("\nSetting up curiosity model...")
-    if use_llm:
-        try:
-            from habitat_llm.llm import instantiate_llm
-            llm_client = instantiate_llm("openai_chat")
-            curiosity = CuriosityModel(llm_client)
-            print(f"Using LLM-guided exploration ({llm_client.generation_params.model})")
-        except Exception as e:
-            print(f"LLM initialization failed: {e}")
-            print("Falling back to random exploration")
-            curiosity = RandomCuriosityModel(seed=seed)
-    else:
-        curiosity = RandomCuriosityModel(seed=seed)
-        print("Using random exploration")
+    # Setup LLM client (required for both curiosity and surprise detection)
+    print("\nSetting up LLM client...")
+    from habitat_llm.llm import instantiate_llm
+    llm_client = instantiate_llm("openai_chat")
+    print(f"  Using model: {llm_client.generation_params.model}")
 
-    # Setup surprise detector
-    surprise = RuleBasedSurpriseDetector()
+    # Setup curiosity model (LLM-based)
+    print("\nSetting up curiosity model...")
+    from emtom.exploration.surprise_detector import SurpriseDetector
+    curiosity = CuriosityModel(llm_client)
+    print("  LLM-guided exploration enabled")
+
+    # Setup surprise detector (LLM-based)
+    print("\nSetting up surprise detector...")
+    surprise = SurpriseDetector(llm_client)
+    print("  LLM-based surprise detection enabled")
 
     # Check if video saving is enabled
     save_video = True
@@ -175,7 +170,7 @@ def run_exploration_loop(env_interface, config, max_steps=50, use_llm=True, seed
 
     metadata = {
         "seed": seed,
-        "mode": "llm" if use_llm else "random",
+        "mode": "llm",
         "scene_id": scene_id,
         "episode_id": episode_id,
     }
@@ -234,7 +229,6 @@ def main(config):
 
     # Get exploration parameters from config or defaults
     max_steps = config.get("exploration_steps", 50)
-    use_llm = config.get("use_llm", True)
 
     # Register Habitat components
     print("Registering Habitat components...")
@@ -261,7 +255,6 @@ def main(config):
             env_interface=env_interface,
             config=config,
             max_steps=max_steps,
-            use_llm=use_llm,
             seed=seed,
         )
     except Exception as e:

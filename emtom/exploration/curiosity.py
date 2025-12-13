@@ -41,14 +41,10 @@ class CuriosityModel:
 - Close[furniture]: Close articulated furniture. Must be near it first.
 - Explore[room]: Thoroughly search a room by visiting all furniture in it.
 
-=== INTERACTION ACTIONS (can do from anywhere in a room) ===
-- FlipLights[room]: Toggle the lights in a room on/off. Might have unexpected effects!
-- PressButton[button]: Press a button or switch. May control unknown systems.
-- PullLever[lever]: Pull a lever. May activate mechanical systems.
-- TurnDial[dial]: Turn a dial/knob. May adjust settings in surprising ways.
-- Inspect[object]: Carefully examine an object to learn its properties.
-- RingBell[bell]: Ring a bell to make a sound (can be heard in adjacent rooms).
-- CheckStatus[device]: Check the current status of a device or system.
+=== CUSTOM ACTIONS ===
+- Hide[object]: Hide an object so others can't see it. Useful for testing what other agents know.
+- Inspect[object]: Carefully examine an object to learn its properties and state.
+- WriteMessage[furniture]: Leave a message on a surface for other agents to find.
 
 WORKFLOW: To interact with objects physically, FIRST navigate to them, THEN interact.
 Example: To pick up "apple_1" on "counter_5":
@@ -71,10 +67,10 @@ Based on your curiosity and desire to learn about this world:
 
 Consider:
 - If a Pick/Open/Close failed with "not close enough", you need to Navigate first
-- Try FlipLights, PressButton, PullLever - they might have SURPRISING effects!
-- Objects and controls might behave unexpectedly (inverse effects, remote control, etc.)
+- Try opening cabinets and drawers to discover what's inside
+- Use Inspect to learn about object properties
+- Hide objects to see if mechanics cause unexpected effects
 - Explore different rooms to find more interactive objects
-- Try Inspect on objects to learn about their properties
 
 Respond in JSON format:
 {{
