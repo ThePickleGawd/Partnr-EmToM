@@ -115,6 +115,7 @@ class TrajectoryLogger:
             "agent_ids": agent_ids,
             "mechanics_active": mechanics_active or [],
             "metadata": metadata or {},
+            "scene_inventory": {},  # Will store all objects/furniture in scene
             "steps": [],
             "surprise_summary": [],
             "statistics": {},
@@ -124,6 +125,34 @@ class TrajectoryLogger:
         self._started = True
 
         return episode_id
+
+    def set_scene_inventory(
+        self,
+        rooms: List[str],
+        furniture: List[str],
+        objects: List[str],
+        articulated_furniture: List[str],
+    ) -> None:
+        """
+        Set the complete scene inventory.
+
+        This ensures task generation only uses real objects from the scene.
+
+        Args:
+            rooms: List of room names in the scene
+            furniture: List of all furniture names
+            objects: List of all object names (pickable items)
+            articulated_furniture: List of furniture that can be opened/closed
+        """
+        if not self._started:
+            raise RuntimeError("Must call start_episode() before setting inventory")
+
+        self.current_episode["scene_inventory"] = {
+            "rooms": rooms,
+            "furniture": furniture,
+            "objects": objects,
+            "articulated_furniture": articulated_furniture,
+        }
 
     def log_message(self, message: str) -> None:
         """

@@ -381,20 +381,33 @@ class HabitatExplorer:
         self.logger.log_message(f"Active mechanics: {active_names}")
 
     def _log_scene_info(self) -> None:
-        """Log information about the current scene."""
+        """Log information about the current scene and save complete inventory."""
         entities = self.world_adapter.get_interactable_entities()
         furniture = [e for e in entities if e["type"] == "furniture"]
         objects = [e for e in entities if e["type"] == "object"]
         rooms = self.world_adapter.get_room_ids()
+
+        # Extract names
+        furniture_names = [f["name"] for f in furniture]
+        object_names = [o["name"] for o in objects]
+        articulated_names = [f["name"] for f in furniture if f.get("is_articulated")]
 
         self.logger.log_message(f"Scene has {len(rooms)} rooms: {rooms}")
         self.logger.log_message(f"Scene has {len(furniture)} furniture items")
         self.logger.log_message(f"Scene has {len(objects)} objects")
 
         # Log articulated furniture
-        articulated = [f["name"] for f in furniture if f.get("is_articulated")]
-        if articulated:
-            self.logger.log_message(f"Articulated furniture: {articulated[:10]}...")
+        if articulated_names:
+            self.logger.log_message(f"Articulated furniture: {articulated_names[:10]}...")
+
+        # Save complete scene inventory to trajectory
+        # This is critical for task generation to only use real objects
+        self.logger.set_scene_inventory(
+            rooms=rooms,
+            furniture=furniture_names,
+            objects=object_names,
+            articulated_furniture=articulated_names,
+        )
 
     def _run_step(self) -> HabitatStepResult:
         """Execute a single exploration step."""

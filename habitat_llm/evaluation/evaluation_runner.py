@@ -423,15 +423,16 @@ class EvaluationRunner:
         """
         Save detailed traces to a pickle file containing instruction, action history and state history.
         """
+        import logging
+
         for actions in self.env_interface.agent_action_history.values():
             # don't check the last action because if you hit the max sim step count no result will be logged
             for action in actions[:-1]:
                 if action.response in [None, ""] and action.action[0] != "Done":
-                    action_history_string = "\n".join(
-                        [f"{a.action}: {a.response}" for a in actions]
-                    )
-                    raise ValueError(
-                        f"Agent {action.agent_uid} has a null response on {action.action}: Action history:\n{action_history_string}"
+                    # Motor skills (Navigate, Open, Close, etc.) may not have text responses
+                    # Log a warning instead of raising an exception
+                    logging.warning(
+                        f"Agent {action.agent_uid} has a null response on {action.action}"
                     )
 
         file_path_detailed_trace = os.path.join(

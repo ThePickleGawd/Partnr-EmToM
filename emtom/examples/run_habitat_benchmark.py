@@ -125,7 +125,7 @@ def main(config: DictConfig) -> None:
 
     # Inject EMTOM tools into each agent
     cprint("\nInjecting EMTOM tools into agents...", "blue")
-    for agent in eval_runner.agents:
+    for agent in eval_runner.agents.values():
         agent_uid = agent.uid
         emtom_tools = get_emtom_tools(agent_uid=agent_uid)
 
@@ -136,7 +136,7 @@ def main(config: DictConfig) -> None:
 
     # Print agent info
     cprint(f"\nAgents: {eval_runner.agent_list}", "blue")
-    for agent in eval_runner.agents:
+    for agent in eval_runner.agents.values():
         cprint(f"  agent_{agent.uid} tools: {list(agent.tools.keys())}", "blue")
 
     # Setup output directory

@@ -145,54 +145,59 @@ class GeneratedTask:
         )
 
 
-TASK_GENERATION_PROMPT = '''You are a task designer for a multi-agent collaboration benchmark.
+TASK_GENERATION_PROMPT = '''You are a task designer for a multi-agent collaboration benchmark in a simulated home environment.
 
-Given the following exploration trajectory where an agent discovered surprising behaviors in a simulated home environment, generate a collaborative task that leverages these discoveries.
+## CRITICAL CONSTRAINT - READ CAREFULLY
+You MUST ONLY use objects and furniture that exist in the scene inventory below.
+DO NOT invent or hallucinate objects like "device", "key", "battery", "PIN", "box", etc.
+The task must be completable using ONLY the real objects and furniture listed.
 
-## Trajectory Summary
-Scene: {scene_id}
-Total Steps: {total_steps}
-Active Mechanics: {mechanics}
+## Scene Inventory (ONLY use these)
+Rooms: {rooms}
+Furniture (can navigate to, some can be opened): {furniture}
+Objects (can be picked up, hidden, inspected): {objects}
+Articulated Furniture (can be opened/closed): {articulated}
 
-## Surprises Discovered
+## Surprises Discovered During Exploration
 {surprises}
 
 ## Task Requirements
 - Design a task for {num_agents} agents working together
-- The task should require agents to understand and use the discovered mechanics
-- One agent should have knowledge about the mechanics, the other should not (theory of mind)
-- Agents must communicate to succeed
-- Use the ACTUAL objects and rooms from the trajectory (e.g., {example_objects})
+- Use ONLY objects/furniture from the Scene Inventory above
+- The task should leverage the discovered mechanics (surprising behaviors)
+- One agent knows about the mechanics, the other does not (theory of mind)
+- Agents must communicate and coordinate to succeed
+- Success conditions must reference REAL objects from the inventory
 
 ## Output Format
 Respond with a JSON object:
 {{
-    "title": "Short descriptive title",
-    "category": "knowledge_asymmetry" or "coordination" or "communication",
-    "description": "2-3 sentence description of the task scenario",
+    "title": "Short descriptive title (max 10 words)",
+    "category": "knowledge_asymmetry",
+    "description": "2-3 sentence description using ONLY real object names from inventory",
     "initial_world_state": {{
-        "objects": ["list of objects involved"],
-        "agent_positions": {{"agent_0": "room_name", "agent_1": "room_name"}}
+        "objects": ["REAL objects from inventory"],
+        "agent_positions": {{"agent_0": "REAL_room_name", "agent_1": "REAL_room_name"}}
     }},
     "required_mechanics": ["mechanic_names from surprises"],
     "agent_roles": {{
-        "agent_0": "Role description - what they know/can do",
-        "agent_1": "Role description - what they know/can do"
+        "agent_0": "Expert - knows the discovered mechanics",
+        "agent_1": "Novice - does not know the mechanics, must follow instructions"
     }},
     "agent_knowledge": {{
-        "agent_0": ["List of things agent_0 knows at start"],
-        "agent_1": ["List of things agent_1 knows at start (less than agent_0)"]
+        "agent_0": ["Specific mechanics knowledge - e.g., 'Opening fridge_58 also opens chest_of_drawers_52 (remote_control)'"],
+        "agent_1": ["Basic knowledge - object locations only"]
     }},
     "subtasks": [
         {{
-            "subtask_id": "unique_id",
-            "description": "What needs to be done",
-            "success_condition": {{"entity": "object_name", "state": "target_state"}}
+            "subtask_id": "step_1",
+            "description": "Action using REAL object names only",
+            "success_condition": {{"entity": "REAL_object_name", "state": "target_state"}}
         }}
     ],
     "success_condition": {{
-        "description": "What success looks like",
-        "required_states": [{{"entity": "name", "property": "prop", "value": true}}]
+        "description": "What success looks like using REAL object names",
+        "required_states": [{{"entity": "REAL_object_name", "property": "is_open", "value": true}}]
     }},
     "failure_conditions": [
         {{"description": "What causes failure"}}
@@ -201,7 +206,7 @@ Respond with a JSON object:
     "estimated_steps": 15
 }}
 
-Generate the task JSON:'''
+Generate the task JSON (remember: ONLY use objects from the Scene Inventory):'''
 
 
 class TaskGenerator:
@@ -246,18 +251,26 @@ class TaskGenerator:
             print("  WARNING: No surprises found in trajectory")
             return []
 
+        # Get scene inventory (critical for grounding tasks in real objects)
+        scene_inventory = trajectory.get("scene_inventory", {})
+        if not scene_inventory:
+            print("  WARNING: No scene inventory in trajectory - tasks may use fictional objects")
+            # Fallback: extract objects from trajectory actions
+            objects_seen = set()
+            for step in trajectory.get("steps", []):
+                for action in step.get("agent_actions", {}).values():
+                    if action.get("target"):
+                        objects_seen.add(action["target"])
+            scene_inventory = {
+                "rooms": [],
+                "furniture": [],
+                "objects": list(objects_seen),
+                "articulated_furniture": [],
+            }
+
         # Get scene info
         scene_id = trajectory.get("metadata", {}).get("scene_id", "unknown")
-        total_steps = trajectory.get("statistics", {}).get("total_steps", 0)
         mechanics = trajectory.get("mechanics_active", [])
-
-        # Extract objects from trajectory
-        objects_seen = set()
-        for step in trajectory.get("steps", []):
-            for action in step.get("agent_actions", {}).values():
-                if action.get("target"):
-                    objects_seen.add(action["target"])
-        example_objects = list(objects_seen)[:5]
 
         # Format surprises for prompt
         surprise_text = self._format_surprises(surprises)
@@ -268,10 +281,9 @@ class TaskGenerator:
             try:
                 task = self._generate_single_task(
                     scene_id=scene_id,
-                    total_steps=total_steps,
                     mechanics=mechanics,
                     surprises=surprise_text,
-                    example_objects=example_objects,
+                    scene_inventory=scene_inventory,
                     num_agents=num_agents,
                     episode_id=trajectory.get("episode_id", "unknown"),
                 )
@@ -296,21 +308,26 @@ class TaskGenerator:
     def _generate_single_task(
         self,
         scene_id: str,
-        total_steps: int,
         mechanics: List[str],
         surprises: str,
-        example_objects: List[str],
+        scene_inventory: Dict[str, List[str]],
         num_agents: int,
         episode_id: str,
     ) -> Optional[GeneratedTask]:
         """Generate a single task using LLM."""
+        # Format scene inventory for prompt
+        rooms = ", ".join(scene_inventory.get("rooms", [])[:10]) or "unknown"
+        furniture = ", ".join(scene_inventory.get("furniture", [])[:15]) or "unknown"
+        objects = ", ".join(scene_inventory.get("objects", [])[:10]) or "unknown"
+        articulated = ", ".join(scene_inventory.get("articulated_furniture", [])[:10]) or "unknown"
+
         prompt = TASK_GENERATION_PROMPT.format(
-            scene_id=scene_id,
-            total_steps=total_steps,
-            mechanics=", ".join(mechanics) if mechanics else "unknown",
+            rooms=rooms,
+            furniture=furniture,
+            objects=objects,
+            articulated=articulated,
             surprises=surprises,
             num_agents=num_agents,
-            example_objects=", ".join(example_objects) if example_objects else "various objects",
         )
 
         response = self.llm.generate(prompt)

@@ -224,6 +224,14 @@ def run_exploration_loop(env_interface, config, max_steps=50, seed=42):
     trajectory_file = f"{output_dir}/trajectory_{episode_data['episode_id']}.json"
     print(f"\nTrajectory saved to: {trajectory_file}")
 
+    # Copy trajectory to data/emtom/trajectories for task generation
+    import shutil
+    data_traj_dir = Path("data/emtom/trajectories")
+    data_traj_dir.mkdir(parents=True, exist_ok=True)
+    dest_file = data_traj_dir / f"trajectory_{episode_data['episode_id']}.json"
+    shutil.copy2(trajectory_file, dest_file)
+    print(f"Copied to: {dest_file}")
+
     return episode_data
 
 

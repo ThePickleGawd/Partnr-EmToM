@@ -39,6 +39,11 @@ class EMTOMTool(Tool):
         """Compatibility method for device placement."""
         pass
 
+    def get_state_description(self) -> str:
+        """Method to get a string describing the state for this tool."""
+        # EMTOM tools are instant actions, so just return standing
+        return "Standing"
+
     def _get_action(self):
         """Get the EMTOM action instance."""
         if self._action is None:

@@ -149,6 +149,16 @@ class InspectAction(EMTOMAction):
     name = "Inspect"
     description = "Carefully examine an object to learn about its properties and current state."
 
+    # Properties to ignore (technical/internal data)
+    IGNORED_PROPERTIES = {
+        "type", "translation", "rotation", "scale", "sim_handle", "handle",
+        "id", "name", "node_type", "category", "semantic_id", "object_id",
+        "position", "orientation", "aabb", "bounds", "mesh", "material",
+    }
+
+    # Meaningful state prefixes to show
+    MEANINGFUL_STATES = {"is_open", "is_powered", "is_clean", "is_filled", "is_locked", "is_on"}
+
     def execute(
         self,
         agent_id: str,
@@ -168,22 +178,22 @@ class InspectAction(EMTOMAction):
         if not entity_info:
             observation = f"You look closely at {target}. It appears to be a normal object."
         else:
-            properties = entity_info.get("properties", {})
             states = entity_info.get("states", {})
 
+            # Only show meaningful states (filter out technical data)
             details = []
-            if properties:
-                for k, v in list(properties.items())[:3]:
-                    details.append(f"{k}: {v}")
-            if states:
-                for k, v in list(states.items())[:3]:
+            for k, v in states.items():
+                # Check if this is a meaningful state
+                if any(k.startswith(prefix) for prefix in self.MEANINGFUL_STATES):
+                    # Format nicely: is_open -> open, is_powered_on -> powered on
+                    readable_name = k.replace("is_", "").replace("_", " ")
                     state_word = "yes" if v else "no"
-                    details.append(f"{k.replace('is_', '')}: {state_word}")
+                    details.append(f"{readable_name}: {state_word}")
 
             if details:
-                observation = f"You examine {target} closely. You notice: {', '.join(details)}."
+                observation = f"You examine {target} closely. You observe: {', '.join(details)}."
             else:
-                observation = f"You examine {target}. Nothing unusual stands out."
+                observation = f"You examine {target}. It appears normal with no unusual properties."
 
         return ActionResult(
             success=True,
