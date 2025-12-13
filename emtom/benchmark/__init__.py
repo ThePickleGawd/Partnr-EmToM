@@ -13,15 +13,26 @@ from emtom.benchmark.evaluator import (
     BenchmarkResults,
     TaskMetrics,
 )
+from emtom.benchmark.habitat_runner import (
+    HabitatTaskRunner,
+    HabitatRunConfig,
+    create_habitat_runner,
+)
 
 __all__ = [
+    # Base runner
     "TaskRunner",
     "TaskResult",
     "AgentInterface",
     "LLMAgent",
     "ScriptedAgent",
     "RunConfig",
+    # Evaluator
     "BenchmarkEvaluator",
     "BenchmarkResults",
     "TaskMetrics",
+    # Habitat integration
+    "HabitatTaskRunner",
+    "HabitatRunConfig",
+    "create_habitat_runner",
 ]
