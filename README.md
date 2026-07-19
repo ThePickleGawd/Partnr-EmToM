@@ -11,6 +11,7 @@ formally verified goals.
 
 ## Links
 
+- [Dataset](https://huggingface.co/datasets/ucsbai/enact_tom_300_public)
 - [Website](https://enact-tom.github.io)
 - [Usage Guide](docs/README.md)
 - [Installation](docs/installation.md)
